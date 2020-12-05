@@ -1,0 +1,96 @@
+cabal-version: 2.2
+name:               ecs-kit
+version:            0.1.0.0
+license:            BSD-3-Clause
+license-file:       LICENSE
+author:             Ashesh Ambasta
+maintainer:         ashesh@asheshambasta.com
+build-type:         Simple
+extra-source-files: README.md
+                    
+common common-default-extensions
+  default-extensions:
+    DataKinds
+    FlexibleContexts
+    FlexibleInstances 
+    MultiParamTypeClasses
+    LambdaCase
+    OverloadedStrings
+    ScopedTypeVariables
+    GADTs 
+    TypeFamilies
+    DerivingVia 
+    RecordWildCards
+    StrictData 
+    DeriveGeneric 
+    StrictData
+    ViewPatterns
+    LambdaCase
+    
+common common-ghc-options 
+  ghc-options:        -Wall -Wno-unused-do-bind
+
+  -- if impl(ghcjs -any)
+  --   -- ghc-options: -dedupe
+  --   cpp-options: -DGHCJS_BROWSER
+
+  default-language:   Haskell2010
+
+  if os(osx)
+    ghc-options: -dynamic
+    
+common common-build-depends
+  build-depends:
+      base
+    , text
+    , containers
+    , lens
+    , data-default-class
+    , aeson
+    , time
+    , http-api-data
+    , http-types
+    , protolude
+   
+  mixins: base hiding (Prelude)
+        , protolude (Protolude as Prelude)
+    
+------------------
+-- Core library --
+------------------
+
+library 
+
+  import: common-default-extensions
+        , common-ghc-options
+        , common-build-depends
+
+  hs-source-dirs:     src
+  exposed-modules:
+  other-modules: 
+  
+-----------
+-- Tests --
+-----------
+
+-- test-suite ecs-kit-test
+--   import: common-default-extensions
+--         , common-build-depends
+--   default-language: Haskell2010
+--   ghc-options:
+--     -threaded
+--     -rtsopts
+--     -with-rtsopts=-N
+--   hs-source-dirs:
+--     test
+--   other-modules:
+--     Data.Garden.PlantSpec
+--   build-depends: 
+--       QuickCheck
+--     , quickcheck-instances
+--     , hspec
+--     , prettyprinter
+--     , ecs-kit
+--   type: exitcode-stdio-1.0
+--   main-is: Spec.hs 
+--   build-tool-depends: hspec-discover:hspec-discover == 2.*
