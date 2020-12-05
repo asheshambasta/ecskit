@@ -26,6 +26,7 @@ common common-default-extensions
     StrictData
     ViewPatterns
     LambdaCase
+    TypeApplications
     
 common common-ghc-options 
   ghc-options:        -Wall -Wno-unused-do-bind
