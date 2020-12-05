@@ -51,7 +51,7 @@ common common-build-depends
     , http-api-data
     , http-types
     , protolude
-   
+    , ansi-terminal
   mixins: base hiding (Prelude)
         , protolude (Protolude as Prelude)
     
@@ -59,13 +59,13 @@ common common-build-depends
 -- Core library --
 ------------------
 
-library ecs-kit-lib
+library ecskit-lib
 
   import: common-default-extensions
         , common-ghc-options
         , common-build-depends
 
-  hs-source-dirs:     src
+  hs-source-dirs: src
   exposed-modules:
   other-modules: 
 
@@ -73,8 +73,8 @@ executable ecskit
   import: common-default-extensions
         , common-ghc-options
         , common-build-depends
-
-  hs-source-dirs:     app
+  build-depends: ecskit-lib
+  hs-source-dirs: exe
   main-is: Main.hs
   exposed-modules:
   other-modules: 

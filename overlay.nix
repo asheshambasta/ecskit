@@ -8,7 +8,7 @@ let
 
   kitOverrides = selfh: superh: {
     ecs-kit = hlib.dontCheck
-      (hlib.dontHaddock (selfh.callCabal2nix "ecs-kit" (gitignore ./.) { }));
+      (hlib.dontHaddock (selfh.callCabal2nix "ecskit" (gitignore ./.) { }));
   };
 in {
   haskellPackages = super.haskellPackages.override (old: {

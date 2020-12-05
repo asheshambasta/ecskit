@@ -21,7 +21,7 @@ while true; do
       -e create \
       -e delete \
       -e attrib \
-      $PKG/$PKG.cabal \
+      $PKG.cabal \
       -r src \
       --exclude ".*flycheck.*|.*\#.*"
   kill $(jobs -p)

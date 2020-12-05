@@ -1,0 +1,25 @@
+conf_forward:
+  options_ghc:
+  - -XArrows
+  - -XDataKinds
+  - -XDeriveGeneric
+  - -XDerivingVia
+  - -XFlexibleContexts
+  - -XFlexibleInstances
+  - -XGADTs
+  - -XInstanceSigs
+  - -XLambdaCase
+  - -XMultiParamTypeClasses
+  - -XNamedFieldPuns
+  - -XNoImplicitPrelude
+  - -XOverloadedStrings
+  - -XPackageImports
+  - -XRecordWildCards
+  - -XScopedTypeVariables
+  - -XTupleSections
+  - -XTypeApplications
+  - -XTypeOperators
+  - -XViewPatterns
+
+conf_layout:
+  config_indentAmount: 2

@@ -1,1 +1,5 @@
 /dist-newstyle/
+/TAGS
+/dist/
+/cabal.project.local
+/dist-ecskit/
