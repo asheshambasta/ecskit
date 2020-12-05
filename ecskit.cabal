@@ -59,7 +59,7 @@ common common-build-depends
 -- Core library --
 ------------------
 
-library 
+library ecs-kit-lib
 
   import: common-default-extensions
         , common-ghc-options
@@ -68,7 +68,17 @@ library
   hs-source-dirs:     src
   exposed-modules:
   other-modules: 
-  
+
+executable ecskit 
+  import: common-default-extensions
+        , common-ghc-options
+        , common-build-depends
+
+  hs-source-dirs:     app
+  main-is: Main.hs
+  exposed-modules:
+  other-modules: 
+          
 -----------
 -- Tests --
 -----------
