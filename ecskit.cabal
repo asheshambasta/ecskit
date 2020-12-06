@@ -56,6 +56,7 @@ common common-build-depends
     , http-types
     , protolude
     , ansi-terminal
+    , polysemy
     , prelude-polysemy
     , amazonka
     , amazonka-ecs
@@ -75,6 +76,7 @@ library ecskit-lib
   exposed-modules: 
     Cmd
     Conf 
+    Polysemy.AWS
   other-modules: 
 
 executable ecskit 

@@ -25,6 +25,7 @@ main = do
   setSGR [Reset]  -- Reset to default colour scheme
   putStrLn @Text "Default colors."
 
+topLevelParse :: A.ParserInfo Conf
 topLevelParse = A.info
   (confParse <**> A.helper)
   (A.fullDesc <> A.progDesc "ECSkit" <> A.header "Sane interaction with ECS.")
