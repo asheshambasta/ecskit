@@ -46,7 +46,7 @@ executeWithRuntime :: Runtime -> IO ExecResult
 executeWithRuntime Runtime { _rConf = Conf { _cCmd = AnyCmd cmd, ..}, ..} =
   runM . runError . Polysemy.Reader.runReader _rAWSEnv $ do
     res <- runCmdExplicit cmd
-    -- putStrLn @Text $ show res
+    putStrLn @Text $ show res
     pure ()
   -- $ case _cCmd of
   -- runM . runError . Polysemy.Reader.runReader _rAWSEnv . runCmd $ case _cCmd of

@@ -47,20 +47,26 @@ data Cmd m a where
 
 makeSem ''Cmd
 
+data CmdResult = DescribeServicesResult ECS.DescribeServicesResponse
+               | DescribeClustersResult ECS.DescribeClustersResponse
+               deriving Show
+
 -- | Interpret an AWS Cmd.
 runCmd
   :: forall a r
    . (Members '[Reader AWS.Env , Embed IO , Error AWSError] r)
   => Sem (Cmd ': r) a
   -> Sem r a
-runCmd = interpret runCmdExplicit
+runCmd = interpret $ \case
+  DescribeServicesCmd ds -> liftAWS $ AWS.send ds
+  DescribeClustersCmd dc -> liftAWS $ AWS.send dc
 
 runCmdExplicit
   :: forall a r m
    . (Members '[Reader AWS.Env , Embed IO , Error AWSError] r)
   => Cmd m a
-  -> Sem r a
+  -> Sem r CmdResult
 runCmdExplicit cmd = case cmd of
-  DescribeServicesCmd ds  -> traceShowId <$> liftAWS (AWS.send ds)
-  DescribeClustersCmd dcs -> traceShowId <$> liftAWS (AWS.send dcs)
+  DescribeServicesCmd ds  -> DescribeServicesResult <$> liftAWS (AWS.send ds)
+  DescribeClustersCmd dcs -> DescribeClustersResult <$> liftAWS (AWS.send dcs)
 
