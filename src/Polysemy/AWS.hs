@@ -24,14 +24,10 @@ liftAWS
    . (Members '[Reader AWS.Env , Embed IO , Error AWSError] r)
   => AWS.AWS a
   -> Sem r a
-liftAWS aws = do
-  env     <- ask @AWS.Env
-  eResult <- embed @IO . catchErrors . runAWS $ env
-  fromEither eResult
+liftAWS aws = fromEitherM . catchErrors . runAWS =<< ask @AWS.Env
  where
   catchErrors = fmap (first AWSError) . try
   runAWS env = AWS.runResourceT . AWS.runAWS env $ aws
-
 
 newtype AWSError = AWSError SomeException
                  deriving Show
@@ -39,7 +35,6 @@ newtype AWSError = AWSError SomeException
 instance Err.IsKnownError AWSError where
   errCode AWSError{} = "ERR.AWS.SOME_EXCEPTION"
   userMessage = Just . show
-  -- displayKnownError = show
   errorLogLevel _ = levelCritical
   httpStatus _ = internalServerError500
 
