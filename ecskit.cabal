@@ -27,6 +27,7 @@ common common-default-extensions
     ViewPatterns
     LambdaCase
     TypeApplications
+    PackageImports
     
 common common-ghc-options 
   ghc-options:        -Wall -Wno-unused-do-bind
@@ -49,12 +50,16 @@ common common-build-depends
     , data-default-class
     , aeson
     , time
+    -- Provides MonadCatch, needed for Amazonka.
+    , exceptions 
     , http-api-data
     , http-types
     , protolude
     , ansi-terminal
+    , prelude-polysemy
+    , amazonka
+    , amazonka-ecs
   mixins: base hiding (Prelude)
-        , protolude (Protolude as Prelude)
     
 ------------------
 -- Core library --
@@ -67,18 +72,23 @@ library ecskit-lib
         , common-build-depends
 
   hs-source-dirs: src
-  exposed-modules:
+  exposed-modules: 
+    Cmd
+    Conf 
   other-modules: 
 
 executable ecskit 
   import: common-default-extensions
         , common-ghc-options
         , common-build-depends
-  build-depends: ecskit-lib
+  build-depends: 
+    ecskit-lib
+    -- parsing options
+    , optparse-applicative
+
   hs-source-dirs: exe
   main-is: Main.hs
-  exposed-modules:
-  other-modules: 
+  other-modules:  Parse.Cmd
           
 -----------
 -- Tests --

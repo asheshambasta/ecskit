@@ -34,5 +34,11 @@
         "type": "tarball",
         "url": "https://github.com/NixOS/nixpkgs/archive/0f8a31b992b6892dd075bac8533955a9b92ac9df.tar.gz",
         "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
+    },
+    "prelude-polysemy": {
+        "ref": "master",
+        "repo": "git@github.com:asheshambasta/prelude-polysemy.git",
+        "rev": "6e972ae8cd888cc84567aa090b1ff0a19ae3ab4b",
+        "type": "git"
     }
 }

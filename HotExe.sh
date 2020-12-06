@@ -22,7 +22,9 @@ while true; do
       -e delete \
       -e attrib \
       $PKG.cabal \
+      overlay.nix \
       -r src \
+      -r nix \
       --exclude ".*flycheck.*|.*\#.*"
   kill $(jobs -p)
   sleep 3

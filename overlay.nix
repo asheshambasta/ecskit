@@ -7,8 +7,9 @@ let
   gitignore = (import sources.gitignore {}).gitignoreSource;
 
   kitOverrides = selfh: superh: {
-    ecs-kit = hlib.dontCheck
-      (hlib.dontHaddock (selfh.callCabal2nix "ecskit" (gitignore ./.) { }));
+    prelude-polysemy =  selfh.callCabal2nix "prelude-polysemy" "${sources.prelude-polysemy}/" {};
+    ecs-kit = 
+      selfh.callCabal2nix "ecskit" (gitignore ./.) { };
   };
 in {
   haskellPackages = super.haskellPackages.override (old: {
