@@ -7,6 +7,8 @@ let
   gitignore = (import sources.gitignore {}).gitignoreSource;
 
   kitOverrides = selfh: superh: {
+    # requires: singletons >=1.0 && <2.3
+    # type-list = selfh.callHackage "type-list" "0.5.0.0" {};
     prelude-polysemy =  selfh.callCabal2nix "prelude-polysemy" "${sources.prelude-polysemy}/" {};
     ecs-kit = 
       selfh.callCabal2nix "ecskit" (gitignore ./.) { };

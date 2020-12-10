@@ -71,10 +71,11 @@ library ecskit-lib
   import: common-default-extensions
         , common-ghc-options
         , common-build-depends
-
+        
   hs-source-dirs: src
   exposed-modules: 
     Cmd
+    Cmd.Disp
     Conf 
     Conf.Runtime 
     Polysemy.AWS
@@ -91,7 +92,9 @@ executable ecskit
 
   hs-source-dirs: exe
   main-is: Main.hs
-  other-modules:  Parse.Cmd
+  other-modules:  
+    Parse.Cmd
+    Parse.Conf
           
 -----------
 -- Tests --

@@ -14,6 +14,7 @@ module Main
 
 import           Conf.Runtime
 import           Cmd
+import           Cmd.Disp
 import qualified Options.Applicative           as A
 
 import           Parse.Conf
@@ -28,6 +29,7 @@ main = do
   conf    <- A.execParser topLevelParse
   runtime <- mkRuntime conf
   result  <- executeWithRuntime runtime
+
   putStrLn @Text . show $ result
   setSGR [SetColor Foreground Vivid Red]
   setSGR [SetColor Background Vivid Blue]
@@ -46,6 +48,7 @@ executeWithRuntime :: Runtime -> IO ExecResult
 executeWithRuntime Runtime { _rConf = Conf { _cCmd = AnyCmd cmd, ..}, ..} =
   runM . runError . Polysemy.Reader.runReader _rAWSEnv $ do
     res <- runCmdExplicit cmd
+    embed $ disp @ 'Terminal res
     putStrLn @Text $ show res
     pure ()
   -- $ case _cCmd of
@@ -58,8 +61,4 @@ executeWithRuntime Runtime { _rConf = Conf { _cCmd = AnyCmd cmd, ..}, ..} =
   --     dsr <- describeClustersCmd ds
   --     embed @IO . putStrLn @Text . show $ dsr
   --     pure ()
-
-
-
-
 

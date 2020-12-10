@@ -35,6 +35,18 @@
         "url": "https://github.com/NixOS/nixpkgs/archive/0f8a31b992b6892dd075bac8533955a9b92ac9df.tar.gz",
         "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
     },
+    "optparse-applicative": {
+        "branch": "master",
+        "description": "Applicative option parser",
+        "homepage": "",
+        "owner": "pcapriotti",
+        "repo": "optparse-applicative",
+        "rev": "73ee40f18e00c7e355a783f1647c361060b194ed",
+        "sha256": "0rzlnw4qzv0p30wr2mi38f0z27yq6s22gjg914rn1zv2kzsjz30s",
+        "type": "tarball",
+        "url": "https://github.com/pcapriotti/optparse-applicative/archive/73ee40f18e00c7e355a783f1647c361060b194ed.tar.gz",
+        "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
+    },
     "prelude-polysemy": {
         "ref": "master",
         "repo": "git@github.com:asheshambasta/prelude-polysemy.git",

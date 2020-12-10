@@ -18,9 +18,13 @@ module Cmd
 
 import qualified GHC.Show
 
+import           Cmd.Disp
+
 import           Polysemy
 import           Polysemy.Reader
 import           Polysemy.AWS
+
+import           Control.Lens
 
 import           Data.Default.Class             ( Default(..) )
 
@@ -42,7 +46,7 @@ instance Default AnyCmd where
   def = AnyCmd . DescribeServicesCmd $ ECS.describeServices
 
 data Cmd m a where
-  DescribeServicesCmd ::ECS.DescribeServices -> Cmd  m ECS.DescribeServicesResponse
+  DescribeServicesCmd ::ECS.DescribeServices -> Cmd m ECS.DescribeServicesResponse
   DescribeClustersCmd ::ECS.DescribeClusters -> Cmd m ECS.DescribeClustersResponse
 
 makeSem ''Cmd
@@ -50,6 +54,11 @@ makeSem ''Cmd
 data CmdResult = DescribeServicesResult ECS.DescribeServicesResponse
                | DescribeClustersResult ECS.DescribeClustersResponse
                deriving Show
+
+instance Disp 'Terminal CmdResult where
+  disp = \case
+    DescribeClustersResult cRes ->
+      mapM_ (disp @ 'Terminal) (cRes ^. ECS.dcrsClusters)
 
 -- | Interpret an AWS Cmd.
 runCmd
