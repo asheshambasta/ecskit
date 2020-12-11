@@ -18,9 +18,13 @@ import qualified Options.Applicative           as A
 cmdParse :: A.Parser AnyCmd
 cmdParse =
   A.subparser
-    $  altCmds ["c", "cluster"] clusterCmds
-    <> altCmds ["s", "service"] serviceCmds
+    $  altCmds ["c", "cluster"]          clusterCmds
+    <> altCmds ["s", "service"]          serviceCmds
+    <> altCmds ["td", "task-definition"] taskDefCmds
  where
+  taskDefCmds =
+    let parser = A.subparser $ A.command "ls" listTaskDefs
+    in  A.info parser $ A.progDesc "Task definition commands."
   serviceCmds =
     let parser =
           A.subparser
@@ -34,6 +38,17 @@ cmdParse =
             <> A.command "describe" describeClusters
     in  A.info parser $ A.progDesc "Cluster commands."
   altCmds names parser = mconcat [ A.command name parser | name <- names ]
+
+listTaskDefs :: A.ParserInfo AnyCmd
+listTaskDefs = AnyCmd <$> A.info listOpts (A.progDesc "List task definitions.")
+ where
+  listOpts =
+    Cmd.ListTaskDefsCmd
+      <$> A.strOption (A.long "prefix" <> A.short 'p')
+      <*> A.optional
+            (A.option (A.eitherReader readEither)
+                      (A.long "status" <> A.short 's')
+            )
 
 listServices :: A.ParserInfo AnyCmd
 listServices = AnyCmd

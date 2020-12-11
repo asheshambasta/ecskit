@@ -15,15 +15,14 @@ module Cmd
   , describeServicesCmd
   , describeClustersCmd
   , listAllServicesCmd
+  , listTaskDefsCmd
   , runCmd
   , runCmdExplicit
   ) where
 
 import qualified GHC.Show
 
-import           Cmd.Disp.ANSI.Helpers          ( propertyNameContent
-                                                , withStdColours
-                                                )
+import           Cmd.Disp.ANSI.Helpers
 import           Cmd.Disp
 
 import           Polysemy
@@ -43,12 +42,20 @@ import qualified Network.AWS.ECS.DescribeClusters
                                                as ECS
 import qualified Network.AWS.ECS.DescribeServices
                                                as ECS
+import qualified Network.AWS.ECS.ListTaskDefinitions
+                                               as ECS
 
 -- | Cluster name
 newtype ClusterName = ClusterName { unClusterName :: Text}
                     deriving (Eq, Show, IsString) via Text
 
 newtype ServiceARN = ServiceARN { unServiceARN :: Text }
+                   deriving (Eq, Show, IsString) via Text
+
+newtype TaskDefFamily = TaskDefFamily { unTaskDefFamily :: Text }
+                      deriving (Eq, Show, IsString) via Text
+
+newtype TaskDefARN = TaskDefARN { unTaskDefARN :: Text }
                    deriving (Eq, Show, IsString) via Text
 
 instance Disp 'Terminal [ServiceARN] where
@@ -66,6 +73,8 @@ instance Show AnyCmd where
     DescribeClustersCmd dcs -> show dcs
     ListAllServicesCmd c mlt ->
       unwords ["ListAllServicesCmd", show c, show mlt]
+    ListTaskDefsCmd prefix mStatus ->
+      unwords ["ListTaskDefsCmd", show prefix, show mStatus]
 
 instance Default AnyCmd where
   def = AnyCmd . DescribeServicesCmd $ ECS.describeServices
@@ -74,6 +83,7 @@ data Cmd m a where
   DescribeServicesCmd ::ECS.DescribeServices -> Cmd m ECS.DescribeServicesResponse
   DescribeClustersCmd ::ECS.DescribeClusters -> Cmd m ECS.DescribeClustersResponse
   ListAllServicesCmd ::ClusterName -> Maybe ECS.LaunchType -> Cmd m [ServiceARN]
+  ListTaskDefsCmd ::TaskDefFamily -> Maybe ECS.TaskDefinitionStatus -> Cmd m [TaskDefARN]
 
 makeSem ''Cmd
 
@@ -81,6 +91,7 @@ data CmdResult a where
   DescribeClustersResult ::ECS.DescribeClustersResponse -> CmdResult ECS.DescribeClustersResponse
   DescribeServicesResult ::ECS.DescribeServicesResponse -> CmdResult ECS.DescribeServicesResponse
   ListServicesResult ::[ServiceARN] -> CmdResult [ServiceARN]
+  ListTaskDefsResult ::[TaskDefARN] -> CmdResult [TaskDefARN]
 
 instance Disp 'Terminal (CmdResult a) where
   disp = \case
@@ -88,6 +99,10 @@ instance Disp 'Terminal (CmdResult a) where
       mapM_ (disp @ 'Terminal) (cRes ^. ECS.dcrsClusters)
     ListServicesResult     arns -> (disp @ 'Terminal) arns
     DescribeServicesResult dsr  -> (disp @ 'Terminal) (dsr ^. ECS.dssrsServices)
+    ListTaskDefsResult     tds  -> withAnsiReset . withStdColours $ do
+      propertyName "TaskDefs"
+      newline
+      putStrLn $ "\n\t" <> T.intercalate "\n\t- " (unTaskDefARN <$> tds)
 
 -- | Interpret an AWS Cmd.
 runCmd
@@ -99,6 +114,7 @@ runCmd = interpret $ runCmdExplicit >=> pure . \case
   DescribeServicesResult svcs -> svcs
   DescribeClustersResult cs   -> cs
   ListServicesResult     svcs -> svcs
+  ListTaskDefsResult     tds  -> tds
 
 runCmdExplicit
   :: forall a r m
@@ -106,21 +122,49 @@ runCmdExplicit
   => Cmd m a
   -> Sem r (CmdResult a)
 runCmdExplicit cmd = case cmd of
-  DescribeServicesCmd ds -> DescribeServicesResult <$> liftAWS (AWS.send ds)
+  DescribeServicesCmd ds  -> DescribeServicesResult <$> liftAWS (AWS.send ds)
   DescribeClustersCmd dcs -> DescribeClustersResult <$> liftAWS (AWS.send dcs)
-  ListAllServicesCmd (ClusterName cluster) lt -> ListServicesResult
-    <$> liftAWS (collectServices Nothing mempty)
+  ListAllServicesCmd (ClusterName cluster) lt ->
+    ListServicesResult
+      .   concatMap (fmap ServiceARN . view ECS.lsrsServiceARNs)
+      <$> collectAWSResponses initReq
+                              (\ls t -> ls & ECS.lsNextToken ?~ t)
+                              (view ECS.lsrsNextToken)
    where
-    collectServices mNextPage acc =
-      let ls =
-            ECS.listServices
-              & (ECS.lsCluster ?~ cluster)
-              & (ECS.lsNextToken .~ mNextPage)
-              & (ECS.lsLaunchType .~ lt)
-      in  do
-            res <- AWS.send ls
-            let arns     = ServiceARN <$> res ^. ECS.lsrsServiceARNs
-                nextPage = res ^. ECS.lsrsNextToken
-                acc'     = acc <> arns
-            if isJust nextPage then collectServices nextPage acc' else pure acc'
+    initReq =
+      ECS.listServices & ECS.lsCluster ?~ cluster & ECS.lsLaunchType .~ lt
+  ListTaskDefsCmd (TaskDefFamily prefix) mStatus ->
+    ListTaskDefsResult
+      .   concatMap (fmap TaskDefARN . view ECS.ltdrsTaskDefinitionARNs)
+      <$> collectAWSResponses initReq
+                              (\ltds t -> ltds & ECS.ltdNextToken ?~ t)
+                              (view ECS.ltdrsNextToken)
+   where
+    initReq =
+      ECS.listTaskDefinitions
+        &  ECS.ltdStatus
+        .~ mStatus
+        &  ECS.ltdFamilyPrefix
+        ?~ prefix
 
+
+collectAWSResponses
+  :: forall a r
+   . ( Members '[Reader AWS.Env , Embed IO , Error AWSError] r
+     , AWS.AWSRequest a
+     )
+  => a -- ^ Initial req.
+  -> (a -> Text -> a) -- ^ How to set the next page token.
+  -> (AWS.Rs a -> Maybe Text) -- ^ How to get the next page token from the response
+  -> Sem r [AWS.Rs a] -- ^ Collection of all responses received from AWS
+collectAWSResponses init setToken getToken = do
+  res <- liftAWS $ AWS.send init
+  collect [res] (getToken res)
+ where
+  collect acc = \case
+    Nothing -> pure acc
+    Just t ->
+      let newReq = setToken init t
+      in  do
+            res <- liftAWS $ AWS.send newReq
+            collect (acc <> [res]) (getToken res)
