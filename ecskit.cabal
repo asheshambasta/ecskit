@@ -76,6 +76,7 @@ library ecskit-lib
   exposed-modules: 
     Cmd
     Cmd.Disp
+    Cmd.Disp.ANSI.Helpers
     Conf 
     Conf.Runtime 
     Polysemy.AWS

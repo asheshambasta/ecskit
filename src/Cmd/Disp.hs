@@ -11,7 +11,7 @@ module Cmd.Disp
   , withAnsiReset
   ) where
 
-import           System.Console.ANSI
+import           Cmd.Disp.ANSI.Helpers
 import           Control.Lens
 import qualified Network.AWS.ECS.Types         as ECS
 
@@ -33,26 +33,39 @@ type family DispResult (m :: DispMedium) where
   DispResult 'Terminal = IO ()
   DispResult 'Json = Value
 
--- | Safely reset the terminal after some IO.
-withAnsiReset :: IO a -> IO a
-withAnsiReset = try @SomeException >=> either resetThrow resetPure
- where
-  resetPure a = setSGR [Reset] $> a
-  resetThrow err = setSGR [Reset] >> throwIO err
-
 instance Disp 'Terminal ECS.Cluster where
-  disp c = withAnsiReset $ do
-    setSGR [SetColor Foreground Vivid White, SetColor Background Vivid Black]
-    withTitle "Name"   (c ^. ECS.cClusterName)
-    withTitle "ARN"    (c ^. ECS.cClusterARN)
-    withTitle "Status" (c ^. ECS.cStatus)
-    withTitle "Active services"
-              (show @Int @Text <$> c ^. ECS.cActiveServicesCount)
-    withTitle "Running tasks" $ show @Int @Text <$> c ^. ECS.cRunningTasksCount
-   where
-    withTitle title mContent = do
-      setSGR [SetConsoleIntensity BoldIntensity]
-      putStr @Text $ title <> ": "
-      setSGR [SetConsoleIntensity NormalIntensity]
-      putStrLn . fromMaybe "--" $ mContent
+  disp c = withAnsiReset . withStdColours $ do
+    propertyNameContent "Name" $ c ^. ECS.cClusterName
+    propertyNameContent "ARN" $ c ^. ECS.cClusterARN
+    propertyNameContent "Status" $ c ^. ECS.cStatus
+    propertyNameContent "Active services"
+                        (show @Int @Text <$> c ^. ECS.cActiveServicesCount)
+    propertyNameContent "Running tasks"
+      $   show @Int @Text
+      <$> c
+      ^.  ECS.cRunningTasksCount
+
+instance Disp 'Terminal [ECS.ContainerService] where
+  disp = withAnsiReset . withStdColours . mapM_ (disp @ 'Terminal)
+
+instance Disp 'Terminal ECS.ContainerService where
+  disp cs = withAnsiReset . withStdColours $ do
+    propertyNameContent "Name" $ cs ^. ECS.csServiceName
+    propertyNameContent "ARN" $ cs ^. ECS.csServiceARN
+    propertyNameContent "Role ARN" $ cs ^. ECS.csRoleARN
+    propertyNameContent "TaskDef" $ cs ^. ECS.csTaskDefinition
+    propertyNameContent "Running" $ show <$> cs ^. ECS.csRunningCount
+    propertyNameContent "Desired" $ show <$> cs ^. ECS.csDesiredCount
+    propertyNameContent "Created" $ show <$> cs ^. ECS.csCreatedAt
+    propertyName "Load balancers" >> newline
+    mapM_ (disp @ 'Terminal) $ cs ^. ECS.csLoadBalancers
+
+instance Disp 'Terminal ECS.LoadBalancer where
+  disp lb = withAnsiReset . withStdColours $ do
+    propertyName . fromMaybe "(No name)" $ lb ^. ECS.lbLoadBalancerName
+    newline
+    propertyNameContent "Target group ARN" $ lb ^. ECS.lbTargetGroupARN
+    propertyNameContent "Container name" $ lb ^. ECS.lbContainerName
+    propertyNameContent "Container port" $ show <$> lb ^. ECS.lbContainerPort
+
 

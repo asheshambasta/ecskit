@@ -1,4 +1,3 @@
-{-# LANGUAGE ApplicativeDo #-}
 module Parse.Cmd
   ( cmdParse
   ) where
@@ -13,22 +12,42 @@ import           Cmd
 import qualified Options.Applicative.Types     as A
 import qualified Options.Applicative           as A
 
+-- | Parse all commands.
+-- Each subgroup of commands constains a list of alternatives, one a short form for those who hate typing,
+-- and another more verbose, for those who don't. 
 cmdParse :: A.Parser AnyCmd
-cmdParse = A.subparser $ describeServicesCmds <> describeClustersCmds
+cmdParse =
+  A.subparser
+    $  altCmds ["c", "cluster"] clusterCmds
+    <> altCmds ["s", "service"] serviceCmds
+ where
+  serviceCmds =
+    let parser =
+          A.subparser
+            $  A.command "ls" listServices
+            <> A.command "d" describeServices
+    in  A.info parser $ A.progDesc "Service commands."
+  clusterCmds =
+    let parser =
+          A.subparser
+            $  A.command "d" describeClusters
+            <> A.command "describe" describeClusters
+    in  A.info parser $ A.progDesc "Cluster commands."
+  altCmds names parser = mconcat [ A.command name parser | name <- names ]
 
-describeServicesCmds :: A.Mod A.CommandFields AnyCmd
-describeServicesCmds =
-  A.command "ds" describeServices
-    <> A.command "describe-services" describeServices
-
-describeClustersCmds :: A.Mod A.CommandFields AnyCmd
-describeClustersCmds =
-  A.command "dc" describeClusters
-    <> A.command "describe-clusters" describeClusters
+listServices :: A.ParserInfo AnyCmd
+listServices = AnyCmd
+  <$> A.info listOpts (A.progDesc "List services in a cluster.")
+ where
+  listOpts =
+    Cmd.ListAllServicesCmd
+      <$> A.strOption (A.long "cluster" <> A.short 'C')
+      <*> A.optional
+            (A.option (A.eitherReader readEither) (A.long "launch-type"))
 
 describeServices :: A.ParserInfo AnyCmd
 describeServices = AnyCmd
-  <$> A.info describeOpts (A.progDesc "Describe services.")
+  <$> A.info describeOpts (A.progDesc "Describe services in a cluster.")
  where
   describeOpts =
     mkDescribe
