@@ -76,10 +76,12 @@ library ecskit-lib
   exposed-modules: 
     Cmd
     Cmd.Disp
+    Cmd.Results
     Cmd.Disp.ANSI.Helpers
     Conf 
     Conf.Runtime 
     Polysemy.AWS
+    AWS.Types
   other-modules: 
 
 executable ecskit 

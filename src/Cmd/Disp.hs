@@ -15,6 +15,7 @@ import           Cmd.Disp.ANSI.Helpers
 import           Control.Lens
 import qualified Network.AWS.ECS.Types         as ECS
 
+import qualified Data.Text                     as T
 import           Data.Aeson
 
 data DispMedium = Terminal | Json
@@ -50,6 +51,12 @@ instance Disp 'Terminal [ECS.ContainerService] where
 
 instance Disp 'Terminal ECS.ContainerService where
   disp cs = withAnsiReset . withStdColours $ do
+    setSGR [SetUnderlining DoubleUnderline, SetColor Foreground Vivid Cyan]
+    title svcName
+    newline
+    title underline
+    newline
+    stdColours
     propertyNameContent "Name" $ cs ^. ECS.csServiceName
     propertyNameContent "ARN" $ cs ^. ECS.csServiceARN
     propertyNameContent "Role ARN" $ cs ^. ECS.csRoleARN
@@ -59,6 +66,9 @@ instance Disp 'Terminal ECS.ContainerService where
     propertyNameContent "Created" $ show <$> cs ^. ECS.csCreatedAt
     propertyName "Load balancers" >> newline
     mapM_ (disp @ 'Terminal) $ cs ^. ECS.csLoadBalancers
+   where
+    svcName   = fromMaybe "--" $ cs ^. ECS.csServiceName
+    underline = T.replicate (T.length svcName) "_"
 
 instance Disp 'Terminal ECS.LoadBalancer where
   disp lb = withAnsiReset . withStdColours $ do

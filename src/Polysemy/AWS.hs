@@ -10,6 +10,7 @@
 module Polysemy.AWS
   ( liftAWS
   , AWSError(..)
+  , collectAWSResponses
   ) where
 
 import           Polysemy
@@ -38,3 +39,24 @@ instance Err.IsKnownError AWSError where
   errorLogLevel _ = levelCritical
   httpStatus _ = internalServerError500
 
+-- | Collect AWS responses for paged results.
+collectAWSResponses
+  :: forall a r
+   . ( Members '[Reader AWS.Env , Embed IO , Error AWSError] r
+     , AWS.AWSRequest a
+     )
+  => a -- ^ Initial req.
+  -> (a -> Text -> a) -- ^ How to set the next page token.
+  -> (AWS.Rs a -> Maybe Text) -- ^ How to get the next page token from the response
+  -> Sem r [AWS.Rs a] -- ^ Collection of all responses received from AWS
+collectAWSResponses init setToken getToken = do
+  res <- liftAWS $ AWS.send init
+  collect [res] (getToken res)
+ where
+  collect acc = \case
+    Nothing -> pure acc
+    Just t ->
+      let newReq = setToken init t
+      in  do
+            res <- liftAWS $ AWS.send newReq
+            collect (acc <> [res]) (getToken res)
