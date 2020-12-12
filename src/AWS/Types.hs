@@ -10,11 +10,13 @@
   , PatternSynonyms
 #-}
 module AWS.Types
-  ( ClusterName(..)
+  ( Name(..)
+  , ClusterName
+  , ServiceName
   , TaskDefFamily(..)
   , pattern TaskDefFamily
   -- * ARNs
-  , ArnType(..)
+  , AwsType(..)
   , Arn(..)
   , ServiceTaskDef(..)
   -- ** Displaying ARNs
@@ -24,6 +26,7 @@ module AWS.Types
   -- * Listing task defs.
   , listTaskDefs
   , serviceTaskDef
+  , homogenousTaskDefs
   ) where
 
 import           Control.Lens
@@ -40,15 +43,18 @@ import           Cmd.Disp
 
 import qualified Data.Text                     as T
 
-data ArnType = ArnService
-             | ArnTaskDef
+data AwsType = AwsService
+             | AwsCluster
+             | AwsTaskDef
+             | AwsTaskDefFamily
              deriving (Show, Eq)
 
-data Arn (t :: ArnType) where
+data Arn (t :: AwsType) where
   -- | A simple service ARN
-  ServiceArn ::Text -> Arn 'ArnService
+  ServiceArn ::Text -> Arn 'AwsService
   -- | Task definition ARN: contains the task def ARN part and the revision, if supplied.
-  TaskDefArn ::Maybe Int -> TaskDefFamily -> Text -> Arn 'ArnTaskDef
+  TaskDefArn ::Maybe Int -> Arn 'AwsTaskDefFamily -> Arn 'AwsTaskDef
+  TaskDefFamilyArn ::TaskDefFamily -> Text -> Arn 'AwsTaskDefFamily
 
 deriving instance Eq (Arn t)
 deriving instance Show (Arn t)
@@ -57,22 +63,27 @@ deriving instance Ord (Arn t)
 arnText :: Arn t -> Text
 arnText = \case
   ServiceArn t -> t
-  TaskDefArn rev (TaskDefFamily f) rest ->
-    rest <> f <> ":" <> maybe "" show rev
+  TaskDefFamilyArn (TaskDefFamily f) rest -> rest <> f
+  TaskDefArn rev f -> arnText f <> ":" <> maybe "" show rev
 
 -- | Splits the Text at the last ":" and tries to parse the RHS as Int.
-taskDefArn :: Text -> Arn 'ArnTaskDef
+taskDefArn :: Text -> Arn 'AwsTaskDef
 taskDefArn txt =
   let (arnFamily, rev                    ) = T.breakOnEnd ":" txt
       (rest     , TaskDefFamily -> family) = T.breakOnEnd "/" arnFamily
   in  if T.null rev
-        then TaskDefArn Nothing family rest
-        else TaskDefArn (readMaybe $ T.unpack rev) family rest
+        then TaskDefArn Nothing $ TaskDefFamilyArn family rest
+        else TaskDefArn (readMaybe $ T.unpack rev)
+          $ TaskDefFamilyArn family rest
+
+newtype Name (t :: AwsType) = Name { unName :: Text } deriving (Eq, Show, Ord, IsString) via Text
+type ClusterName = Name 'AwsCluster
+type ServiceName = Name 'AwsService
 
 -- | Status of the service's TaskDefintion.
 data ServiceTaskDef = ServiceTaskDef
-  { _sdCurTaskDef    :: Arn 'ArnTaskDef
-  , _sdAvailTaskDefs :: [Arn 'ArnTaskDef]
+  { _sdCurTaskDef    :: Arn 'AwsTaskDef
+  , _sdAvailTaskDefs :: [Arn 'AwsTaskDef]
   }
   deriving (Eq, Show)
 
@@ -89,12 +100,20 @@ latestTaskDef :: ServiceTaskDef -> Maybe Bool
 latestTaskDef ServiceTaskDef {..} =
   (_sdCurTaskDef ==) <$> headMay (sortOn Down _sdAvailTaskDefs)
 
+-- | Check if a given list of task definitions is homogenous (contains revisions of the same family)
+homogenousTaskDefs :: [Arn 'AwsTaskDef] -> Bool
+homogenousTaskDefs arns =
+  let families = [ f | TaskDefArn _ f <- arns ]
+  in  case headMay families of
+        Nothing -> True
+        Just h  -> all (== h) families
+
 -- | List all task definitions available for a service.
 serviceTaskDef
   :: Members '[Reader AWS.Env , Embed IO , Error AWSError] r
-  => Arn 'ArnTaskDef -- ^ The current task def. in use by the service
+  => Arn 'AwsTaskDef -- ^ The current task def. in use by the service
   -> Sem r ServiceTaskDef
-serviceTaskDef arn@(TaskDefArn _ f _) =
+serviceTaskDef arn@(TaskDefArn _ (TaskDefFamilyArn f _)) =
   ServiceTaskDef arn . sortOn Down <$> listTaskDefs f Nothing
 
 -- | List all task defs based on a TaskDef family.
@@ -102,7 +121,7 @@ listTaskDefs
   :: Members '[Reader AWS.Env , Embed IO , Error AWSError] r
   => TaskDefFamily
   -> Maybe ECS.TaskDefinitionStatus
-  -> Sem r [Arn 'ArnTaskDef]
+  -> Sem r [Arn 'AwsTaskDef]
 listTaskDefs (TaskDefFamily f) mStatus =
   let req =
         ECS.listTaskDefinitions
@@ -112,10 +131,6 @@ listTaskDefs (TaskDefFamily f) mStatus =
                                      (\ltds t -> ltds & ECS.ltdNextToken ?~ t)
                                      (view ECS.ltdrsNextToken)
   where mkArns = concatMap (fmap taskDefArn . view ECS.ltdrsTaskDefinitionARNs)
-
--- | Cluster name
-newtype ClusterName = ClusterName { unClusterName :: Text}
-                    deriving (Eq, Show, IsString) via Text
 
 newtype TaskDefFamily = UnsafeTaskDefFamily { unTaskDefFamily :: Text }
                       deriving (Eq, Show, IsString, Ord) via Text

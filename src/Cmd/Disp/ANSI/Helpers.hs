@@ -1,5 +1,6 @@
 module Cmd.Disp.ANSI.Helpers
   ( withAnsiReset
+  , heading
   , title
   , newline
   , propertyName
@@ -22,6 +23,10 @@ withAnsiReset = try @SomeException >=> either resetThrow resetPure
 
 newline :: IO ()
 newline = putStrLn @Text ""
+
+heading :: Text -> IO ()
+heading h =
+  title h >> newline >> putStrLn (T.replicate (T.length h) "_") >> newline
 
 title :: Text -> IO ()
 title t = do

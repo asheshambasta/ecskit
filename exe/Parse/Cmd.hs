@@ -5,9 +5,7 @@ module Parse.Cmd
 import           Control.Lens
 import qualified Network.AWS.ECS.DescribeClusters
                                                as ECS
-import qualified Network.AWS.ECS.DescribeServices
-                                               as ECS
-import           Cmd
+import           Cmd                     hiding ( listTaskDefs )
 
 import qualified Options.Applicative.Types     as A
 import qualified Options.Applicative           as A
@@ -30,6 +28,7 @@ cmdParse =
           A.subparser
             $  A.command "ls" listServices
             <> A.command "d" describeServices
+            <> altCmds ["u", "update-task-definition"] updateTaskDef
     in  A.info parser $ A.progDesc "Service commands."
   clusterCmds =
     let parser =
@@ -56,25 +55,45 @@ listServices = AnyCmd
  where
   listOpts =
     Cmd.ListAllServicesCmd
-      <$> A.strOption (A.long "cluster" <> A.short 'C')
+      <$> A.strOption
+            (A.long "cluster" <> A.short 'C' <> A.help "Name of the cluster.")
       <*> A.optional
             (A.option (A.eitherReader readEither) (A.long "launch-type"))
+
+clusterName :: A.Parser ClusterName
+clusterName =
+  A.strOption (A.long "cluster" <> A.short 'C' <> A.help "Name of the cluster.")
+
+serviceName :: A.Parser ServiceName
+serviceName =
+  A.strOption (A.long "service" <> A.short 'S' <> A.help "Name of the service.")
+
+-- | Update the task def; if no specific revision is provided, the latest revision is used.
+-- This only handles continuous task defintions, or task defintion names with some notion of "ordering".
+updateTaskDef :: A.ParserInfo AnyCmd
+updateTaskDef = AnyCmd <$> A.info updateOpts (A.progDesc "Update service.")
+ where
+  updateOpts =
+    Cmd.UpdateTaskDefsCmd
+      <$> clusterName
+      <*> many serviceNameRevision
+      <*> A.flag Cmd.Force
+                 Cmd.NoForce
+                 (A.long "force" <> A.short 'F' <> A.help "Force update.")
+  serviceNameRevision = (,) <$> serviceName <*> A.optional
+    (A.option A.auto $ A.long "revision" <> A.short 'R' <> A.help
+      "Revision to use."
+    )
+
 
 describeServices :: A.ParserInfo AnyCmd
 describeServices = AnyCmd
   <$> A.info describeOpts (A.progDesc "Describe services in a cluster.")
  where
   describeOpts =
-    mkDescribe
+    Cmd.DescribeServicesCmd
       <$> A.strOption (A.long "cluster" <> A.short 'C')
       <*> (many1 . A.strOption $ A.long "service" <> A.short 'S')
-  mkDescribe c svcs =
-    Cmd.DescribeServicesCmd
-      $  ECS.describeServices
-      &  ECS.dCluster
-      ?~ c
-      &  ECS.dServices
-      .~ toList svcs
 
 describeClusters :: A.ParserInfo AnyCmd
 describeClusters = AnyCmd
@@ -84,9 +103,8 @@ describeClusters = AnyCmd
     mkDescribe <$> (many1 . A.strOption $ A.long "cluster" <> A.short 'C')
   mkDescribe clusters =
     Cmd.DescribeClustersCmd
-      $  ECS.describeClusters
-      &  ECS.dcClusters
-      .~ toList clusters
+      $ ECS.describeClusters
+      & (ECS.dcClusters .~ toList clusters)
 
 many1 :: A.Parser a -> A.Parser (NonEmpty a)
 many1 p = A.fromM $ (:|) <$> A.oneM p <*> A.manyM p

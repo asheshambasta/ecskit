@@ -6,7 +6,6 @@ module Conf
   , cCmd
   ) where
 
-import           Data.Default.Class             ( Default(..) )
 import           Control.Lens
 import           Cmd
 import qualified Network.AWS                   as AWS
@@ -18,8 +17,8 @@ data Conf = Conf
   }
   deriving Show
 
-instance Default Conf where
-  def = Conf AWS.Discover AWS.Ireland def
+-- instance Default Conf where
+--   def = Conf AWS.Discover AWS.Ireland def
 
 makeLenses ''Conf
 
