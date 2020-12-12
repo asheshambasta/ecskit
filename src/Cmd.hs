@@ -7,6 +7,7 @@
   , DataKinds
   , PolyKinds
   , StandaloneDeriving
+  , TupleSections
 #-}
 module Cmd
   ( Cmd(..)
@@ -30,6 +31,7 @@ import           Polysemy.Reader
 import           Polysemy.Writer
 import           Polysemy.AWS
 
+import qualified Data.Text                     as T
 import           Control.Lens
 
 import "this"    AWS.Types
@@ -109,11 +111,77 @@ runCmdExplicit cmd = case cmd of
    where
     initReq =
       ECS.listServices & ECS.lsCluster ?~ cluster & ECS.lsLaunchType .~ lt
+
   ListTaskDefsCmd f mStatus -> ListTaskDefsResult <$> listTaskDefs f mStatus
 
-  UpdateTaskDefsCmd cluster svcRevs uMode -> fmap fst . runWriter $ do
-    services <- runCmdExplicit $ ListAllServicesCmd cluster Nothing
-    let invalidSvcs = if null givenSvcs then [] else undefined
-    undefined
-    where givenSvcs = fst <$> svcRevs
+  UpdateTaskDefsCmd cluster svcRevs uMode ->
+    runCmdExplicit (ListAllServicesCmd cluster Nothing) >>= \case
+      ListServicesResult serviceArns ->
+        fmap (UpdateTaskDefsResult . fst)
+          . runWriter @[UpdateTaskDefResult]
+          $ updateTaskDefsWith cluster svcRevs uMode serviceArns
 
+updateTaskDefsWith
+  :: forall r
+   . ( Members
+         '[ Reader AWS.Env
+          , Embed IO
+          , Error AWSError
+          , Writer [UpdateTaskDefResult]
+          ]
+         r
+     )
+  => ClusterName
+  -> [(ServiceName, Maybe Int)]
+  -> UpdateMode
+  -> [Arn 'AwsService]
+  -> Sem r ()
+updateTaskDefsWith cluster svcRevs uMode serviceArns = do
+      -- the user supplied service names may or may not be the full service ARNs.
+  let invalidSvcs =
+        (`UpdateTdFailed` "Service not found.")
+          <$> filter (not . isValid) givenSvcs
+      serviceTexts = [ s | ServiceArn s <- serviceArns ]
+      isValid (Name svc) = isJust . find (svc `T.isSuffixOf`) $ serviceTexts
+      -- these are services we want to update: if the user didn't specify any svcs, we update all
+      -- in the cluster.
+      toUpdate = if null svcRevs
+        then (, Nothing) . Name <$> serviceTexts
+        else filter (isValid . fst) svcRevs
+
+  -- report the invalid services
+  tell invalidSvcs
+  maybe (pure ()) updateServiceRevs (nonEmpty toUpdate)
+
+ where
+  givenSvcs = fst <$> svcRevs
+  updateServiceRevs updSvcRevs =
+    let svcNames = fst <$> updSvcRevs
+    in  runCmdExplicit (DescribeServicesCmd cluster svcNames) >>= \case
+          DescribeServicesResult descs -> mapM_ updateService descs
+  updateService :: ServiceDescription -> Sem r ()
+  updateService (ServiceDescription cs mtd) = case mtd of
+    Nothing -> tell noTaskDefs
+    -- only process the given svc. if homogenous.
+    Just ServiceTaskDef {..} | homogenousTaskDefs _sdAvailTaskDefs ->
+      case latestTaskDef _sdAvailTaskDefs of
+        Nothing -> tell noTaskDefs
+        -- if the task-def in use is the latest, only update on `Force`. 
+        Just td | td /= _sdCurTaskDef || uMode == Force -> callAWS td
+        Just _  -> tell nothingToDo
+     where
+      callAWS td = tell
+        [UpdateTdFailed svcName $ "[NOT FAILED!] Update to: " <> arnText td]
+    Just std -> tell $ nonHomogenous std
+   where
+    svcName =
+      Name @ 'AwsService . fromMaybe "UNKNOWN" $ cs ^. ECS.csServiceName
+    noTaskDefs =
+      [UpdateTdFailed svcName "Cannot get ServiceTaskDef from DescribeService."]
+    nonHomogenous std =
+      [UpdateTdFailed svcName ("Non-Homogenous taskdefs: " <> show std)]
+    nothingToDo =
+      [ UpdateTdFailed
+          svcName
+          "Already using the latest TaskDef, use --force to override."
+      ]

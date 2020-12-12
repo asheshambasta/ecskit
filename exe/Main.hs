@@ -27,7 +27,11 @@ main :: IO ()
 main = do
   conf    <- A.execParser topLevelParse
   runtime <- mkRuntime conf
-  executeWithRuntime runtime $> ()
+  eRes    <- executeWithRuntime runtime
+  case eRes of
+    Left  err -> putStrLn @Text (show err) >> exitFailure
+    Right _   -> exitSuccess
+
 
 topLevelParse :: A.ParserInfo Conf
 topLevelParse = A.info

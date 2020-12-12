@@ -27,6 +27,8 @@ module AWS.Types
   , listTaskDefs
   , serviceTaskDef
   , homogenousTaskDefs
+  , latestTaskDef
+  , isLatestTaskDef
   ) where
 
 import           Control.Lens
@@ -92,12 +94,16 @@ instance Disp 'Terminal ServiceTaskDef where
     propertyName "TaskDefs"
     newline
     propertyNameContent "In-use"      (Just $ arnText _sdCurTaskDef)
-    propertyNameContent "UsingLatest" (show <$> latestTaskDef std)
+    propertyNameContent "UsingLatest" (show <$> isLatestTaskDef std)
     putStrLn allDefs
     where allDefs = indented arnText _sdAvailTaskDefs
 
-latestTaskDef :: ServiceTaskDef -> Maybe Bool
-latestTaskDef ServiceTaskDef {..} =
+latestTaskDef :: [Arn 'AwsTaskDef] -> Maybe (Arn 'AwsTaskDef)
+latestTaskDef tds | null tds  = Nothing
+                  | otherwise = Just $ maximum tds
+
+isLatestTaskDef :: ServiceTaskDef -> Maybe Bool
+isLatestTaskDef ServiceTaskDef {..} =
   (_sdCurTaskDef ==) <$> headMay (sortOn Down _sdAvailTaskDefs)
 
 -- | Check if a given list of task definitions is homogenous (contains revisions of the same family)
@@ -147,3 +153,5 @@ instance Disp 'Terminal [Arn t] where
     in  withAnsiReset . withStdColours $ propertyNameContent "ARNs"
                                                              (Just arnsStr)
 
+instance Disp 'Terminal (Name n) where
+  disp (Name n) = heading n

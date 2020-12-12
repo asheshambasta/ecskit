@@ -53,6 +53,14 @@ instance Disp 'Terminal (CmdResult a) where
     UpdateTaskDefsResult   results -> mapM_ (disp @ 'Terminal) results
 
 instance Disp 'Terminal UpdateTaskDefResult where
+  disp = \case
+
+    UpdateTdFailed name msg -> withAnsiReset . withStdColours $ do
+      setSGR [SetColor Foreground Vivid Red]
+      disp @ 'Terminal name
+      putStrLn $ indented identity [msg]
+
+    UpdateTdSuccess _ desc -> disp @ 'Terminal desc
 
 instance Semigroup (CmdResult [UpdateTaskDefResult]) where
   (UpdateTaskDefsResult rs0) <> (UpdateTaskDefsResult rs1) =

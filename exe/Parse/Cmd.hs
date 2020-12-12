@@ -77,8 +77,8 @@ updateTaskDef = AnyCmd <$> A.info updateOpts (A.progDesc "Update service.")
     Cmd.UpdateTaskDefsCmd
       <$> clusterName
       <*> many serviceNameRevision
-      <*> A.flag Cmd.Force
-                 Cmd.NoForce
+      <*> A.flag Cmd.NoForce
+                 Cmd.Force
                  (A.long "force" <> A.short 'F' <> A.help "Force update.")
   serviceNameRevision = (,) <$> serviceName <*> A.optional
     (A.option A.auto $ A.long "revision" <> A.short 'R' <> A.help
