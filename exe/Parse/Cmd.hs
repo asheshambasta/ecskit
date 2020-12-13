@@ -2,13 +2,13 @@ module Parse.Cmd
   ( cmdParse
   ) where
 
+import           Cmd
 import           Control.Lens
 import qualified Network.AWS.ECS.DescribeClusters
                                                as ECS
-import           Cmd                     hiding ( listTaskDefs )
 
-import qualified Options.Applicative.Types     as A
 import qualified Options.Applicative           as A
+import qualified Options.Applicative.Types     as A
 
 -- | Parse all commands.
 -- Each subgroup of commands constains a list of alternatives, one a short form for those who hate typing,
@@ -24,11 +24,14 @@ cmdParse =
     let parser = A.subparser $ A.command "ls" listTaskDefs
     in  A.info parser $ A.progDesc "Task definition commands."
   serviceCmds =
-    let parser =
-          A.subparser
-            $  A.command "ls" listServices
-            <> A.command "d" describeServices
-            <> altCmds ["u", "update-task-definition"] updateTaskDef
+    let
+      parser =
+        A.subparser
+          $  A.command "ls" listServices
+          <> A.command "d" describeServices
+          <> altCmds ["u", "update-task-definition"] updateTaskDef
+          <> altCmds ["dutd", "describe-used-task-definition"]
+                     describeUsedTaskDef
     in  A.info parser $ A.progDesc "Service commands."
   clusterCmds =
     let parser =
@@ -85,6 +88,10 @@ updateTaskDef = AnyCmd <$> A.info updateOpts (A.progDesc "Update service.")
       "Revision to use."
     )
 
+describeUsedTaskDef :: A.ParserInfo AnyCmd
+describeUsedTaskDef = AnyCmd
+  <$> A.info opts (A.progDesc "Describe used task definitions")
+  where opts = DescribeUsedTaskDefsCmd <$> clusterName <*> many1 serviceName
 
 describeServices :: A.ParserInfo AnyCmd
 describeServices = AnyCmd

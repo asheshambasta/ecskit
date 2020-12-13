@@ -12,16 +12,16 @@ module Main
   ( main
   ) where
 
-import           Conf.Runtime
 import           Cmd
 import           Cmd.Disp
+import           Conf.Runtime
 import qualified Options.Applicative           as A
 
 import           Parse.Conf
 
 import           Polysemy
-import           Polysemy.Reader
 import           Polysemy.AWS
+import           Polysemy.Reader
 
 main :: IO ()
 main = do
@@ -43,17 +43,7 @@ type ExecResult = Either AWSError ()
 executeWithRuntime :: Runtime -> IO ExecResult
 executeWithRuntime Runtime { _rConf = Conf { _cCmd = AnyCmd cmd, ..}, ..} =
   runM . runError . Polysemy.Reader.runReader _rAWSEnv $ do
+  -- TODO: determine run-status (exitCode) from the res)
     res <- runCmdExplicit cmd
     embed $ disp @ 'Terminal res
     pure ()
-  -- $ case _cCmd of
-  -- runM . runError . Polysemy.Reader.runReader _rAWSEnv . runCmd $ case _cCmd of
-  --   AnyCmd (DescribeServicesCmd ds) -> do
-  --     dsr <- describeServicesCmd ds
-  --     embed @IO . putStrLn @Text . show $ dsr
-  --     pure ()
-  --   AnyCmd (DescribeClustersCmd ds) -> do
-  --     dsr <- describeClustersCmd ds
-  --     embed @IO . putStrLn @Text . show $ dsr
-  --     pure ()
-

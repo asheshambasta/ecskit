@@ -82,6 +82,7 @@ library ecskit-lib
     Conf.Runtime 
     Polysemy.AWS
     AWS.Types
+    AWS.Commands.TaskDef
   other-modules: 
     Lib.List 
 
@@ -105,6 +106,7 @@ library ecskit-repl
     Conf.Runtime 
     Polysemy.AWS
     AWS.Types
+    AWS.Commands.TaskDef
     Lib.List
   other-modules: 
   build-depends: 

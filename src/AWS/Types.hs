@@ -10,9 +10,11 @@
   , PatternSynonyms
 #-}
 module AWS.Types
-  ( Name(..)
+  ( -- * Names
+    Name(..)
   , ClusterName
   , ServiceName
+  , TaskDefName
   , TaskDefFamily(..)
   , pattern TaskDefFamily
   -- * ARNs
@@ -24,24 +26,13 @@ module AWS.Types
   -- * Parsing specific ARNs
   , taskDefArn
   -- * Listing task defs.
-  , listTaskDefs
-  , serviceTaskDef
   , homogenousTaskDefs
   , latestTaskDef
   , isLatestTaskDef
   ) where
 
-import           Control.Lens
-
-import qualified Network.AWS                   as AWS
-import qualified Network.AWS.ECS               as ECS
-
-import           Polysemy.Reader
-import           Polysemy
-import           Polysemy.AWS
-
-import           Cmd.Disp.ANSI.Helpers
 import           Cmd.Disp
+import           Cmd.Disp.ANSI.Helpers
 
 import qualified Data.Text                     as T
 
@@ -81,6 +72,7 @@ taskDefArn txt =
 newtype Name (t :: AwsType) = Name { unName :: Text } deriving (Eq, Show, Ord, IsString) via Text
 type ClusterName = Name 'AwsCluster
 type ServiceName = Name 'AwsService
+type TaskDefName = Name 'AwsTaskDef
 
 -- | Status of the service's TaskDefintion.
 data ServiceTaskDef = ServiceTaskDef
@@ -114,30 +106,6 @@ homogenousTaskDefs arns =
         Nothing -> True
         Just h  -> all (== h) families
 
--- | List all task definitions available for a service.
-serviceTaskDef
-  :: Members '[Reader AWS.Env , Embed IO , Error AWSError] r
-  => Arn 'AwsTaskDef -- ^ The current task def. in use by the service
-  -> Sem r ServiceTaskDef
-serviceTaskDef arn@(TaskDefArn _ (TaskDefFamilyArn f _)) =
-  ServiceTaskDef arn . sortOn Down <$> listTaskDefs f Nothing
-
--- | List all task defs based on a TaskDef family.
-listTaskDefs
-  :: Members '[Reader AWS.Env , Embed IO , Error AWSError] r
-  => TaskDefFamily
-  -> Maybe ECS.TaskDefinitionStatus
-  -> Sem r [Arn 'AwsTaskDef]
-listTaskDefs (TaskDefFamily f) mStatus =
-  let req =
-        ECS.listTaskDefinitions
-          & (ECS.ltdStatus .~ mStatus)
-          & (ECS.ltdFamilyPrefix ?~ f)
-  in  mkArns <$> collectAWSResponses req
-                                     (\ltds t -> ltds & ECS.ltdNextToken ?~ t)
-                                     (view ECS.ltdrsNextToken)
-  where mkArns = concatMap (fmap taskDefArn . view ECS.ltdrsTaskDefinitionARNs)
-
 newtype TaskDefFamily = UnsafeTaskDefFamily { unTaskDefFamily :: Text }
                       deriving (Eq, Show, IsString, Ord) via Text
 
@@ -154,4 +122,4 @@ instance Disp 'Terminal [Arn t] where
                                                              (Just arnsStr)
 
 instance Disp 'Terminal (Name n) where
-  disp (Name n) = heading n
+  disp (Name n) = setSGR [SetColor Foreground Vivid Cyan] >> heading n

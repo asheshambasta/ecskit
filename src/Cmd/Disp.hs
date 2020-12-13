@@ -15,8 +15,8 @@ import           Cmd.Disp.ANSI.Helpers
 import           Control.Lens
 import qualified Network.AWS.ECS.Types         as ECS
 
-import qualified Data.Text                     as T
 import           Data.Aeson
+import qualified Data.Text                     as T
 
 data DispMedium = Terminal | Json
                    deriving (Eq, Show)
@@ -33,6 +33,15 @@ class Disp (medium :: DispMedium) a where
 type family DispResult (m :: DispMedium) where
   DispResult 'Terminal = IO ()
   DispResult 'Json = Value
+
+instance (Typeable a, Disp 'Terminal a) => Disp 'Terminal (Maybe a) where
+  disp Nothing = withAnsiReset . withStdColours $ do
+    setSGR [SetColor Foreground Vivid Red]
+    putStrLn @Text msg
+   where
+    msg      = typeName <> " not found."
+    typeName = show . typeRep $ Proxy @a
+  disp (Just a) = disp @ 'Terminal a
 
 instance Disp 'Terminal ECS.Cluster where
   disp c = withAnsiReset . withStdColours $ do
@@ -75,4 +84,40 @@ instance Disp 'Terminal ECS.LoadBalancer where
     propertyNameContent "Container name" $ lb ^. ECS.lbContainerName
     propertyNameContent "Container port" $ show <$> lb ^. ECS.lbContainerPort
 
+instance Disp 'Terminal ECS.TaskDefinition where
+  disp td = withAnsiReset . withStdColours $ do
+    propertyNameContent "Status" $ T.drop 3 . show <$> td ^. ECS.tdStatus
+    propertyNameContent "CPU" $ td ^. ECS.tdCpu
+    propertyNameContent "Memory" $ td ^. ECS.tdMemory
+    propertyNameContent "Family" $ td ^. ECS.tdFamily
+    propertyNameContent "Network mode" $ show <$> td ^. ECS.tdNetworkMode
+    propertyNameContent "Revision" $ show <$> td ^. ECS.tdRevision
+    propertyNameContent "Execution role ARN" $ td ^. ECS.tdExecutionRoleARN
+    propertyNameContent "Task role ARN" $ td ^. ECS.tdTaskRoleARN
+    let rCompats =
+          Just
+            .  T.intercalate ", "
+            .  fmap show
+            $  td
+            ^. ECS.tdRequiresCompatibilities
+    propertyNameContent "Requires compats" rCompats
+    let compats =
+          Just . T.intercalate ", " . fmap show $ td ^. ECS.tdCompatibilities
+    propertyNameContent "Compats" compats
+    setSGR [SetColor Foreground Vivid Yellow]
+    title "Container definitions"
+    newline
+    mapM_ (disp @ 'Terminal) (td ^. ECS.tdContainerDefinitions)
 
+instance Disp 'Terminal ECS.ContainerDefinition where
+  disp cd = withAnsiReset $ do
+    setSGR [SetColor Foreground Vivid Yellow]
+    propertyNameContent "Name" $ cd ^. ECS.cdName
+    propertyNameContent "Image" $ cd ^. ECS.cdImage
+    title "Command"
+    putStrLn $ indented addSlash (cd ^. ECS.cdCommand)
+    title "Entrypoint"
+    putStrLn $ indented addSlash (cd ^. ECS.cdEntryPoint)
+    let networking = show <$> cd ^. ECS.cdDisableNetworking
+    propertyNameContent "Networking disabled" networking
+    where addSlash t = t <> " \\"

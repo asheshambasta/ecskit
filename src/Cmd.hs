@@ -34,8 +34,10 @@ import           Polysemy.Reader
 import           Polysemy.Writer
 
 import           Control.Lens
+import           Control.Monad                  ( (<=<) )
 import qualified Data.Text                     as T
 
+import "this"    AWS.Commands.TaskDef
 import "this"    AWS.Types
 
 import qualified Network.AWS                   as AWS
@@ -67,6 +69,8 @@ data Cmd m a where
                     -> [(ServiceName, Maybe Int)]
                     -> UpdateMode
                     -> Cmd m [UpdateTaskDefResult]
+  -- | Describe the used task definition by one or more services.
+  DescribeUsedTaskDefsCmd ::ClusterName -> NonEmpty ServiceName -> Cmd m [(ServiceName, Maybe ECS.TaskDefinition)]
 
 makeSem ''Cmd
 deriving instance Show (Cmd m a)
@@ -118,7 +122,8 @@ runCmdExplicit cmd = case cmd of
     initReq =
       ECS.listServices & ECS.lsCluster ?~ cluster & ECS.lsLaunchType .~ lt
 
-  ListTaskDefsCmd f mStatus -> ListTaskDefsResult <$> listTaskDefs f mStatus
+  ListTaskDefsCmd f mStatus ->
+    ListTaskDefsResult <$> runTaskDefCmd (tdListTaskDefs f mStatus)
 
   UpdateTaskDefsCmd cluster svcRevs uMode ->
     runCmdExplicit (ListAllServicesCmd cluster Nothing) >>= \case
@@ -126,6 +131,24 @@ runCmdExplicit cmd = case cmd of
         fmap (UpdateTaskDefsResult . fst)
           . runWriter @[UpdateTaskDefResult]
           $ updateTaskDefsWith cluster svcRevs uMode serviceArns
+
+  DescribeUsedTaskDefsCmd c svcs ->
+    runCmdExplicit (DescribeServicesCmd c svcs) >>= \case
+      DescribeServicesResult descs -> taskDefsFromDescs descs
+
+taskDefsFromDescs
+  :: forall r
+   . (Members '[Reader AWS.Env , Embed IO , Error AWSError] r)
+  => [ServiceDescription]
+  -> Sem r (CmdResult [(ServiceName, Maybe ECS.TaskDefinition)])
+taskDefsFromDescs descs = DescribeUsedTaskDefsResult <$> mapM descTd descs
+ where
+  descTd (ServiceDescription cs mStd) = runTaskDefCmd $ case mStd of
+    Nothing -> pure (sName, Nothing)
+    Just ServiceTaskDef { _sdCurTaskDef = arnText -> td } ->
+      (sName, ) . (snd <=< headMay) <$> tdDescribeTaskDefs [Name td]
+   where
+    sName = Name @ 'AwsService . fromMaybe "UNKNOWN" $ cs ^. ECS.csServiceName
 
 updateTaskDefsWith
   :: forall r
@@ -145,7 +168,7 @@ updateTaskDefsWith
 updateTaskDefsWith cluster svcRevs uMode serviceArns = do
       -- the user supplied service names may or may not be the full service ARNs.
   let invalidSvcs =
-        (`UpdateTdFailed` "Service not found.")
+        (`ServiceFailed` "Service not found.")
           <$> filter (not . isValid) givenSvcs
       serviceTexts = [ s | ServiceArn s <- serviceArns ]
       isValid (Name svc) = isJust . find (svc `T.isSuffixOf`) $ serviceTexts
@@ -156,7 +179,7 @@ updateTaskDefsWith cluster svcRevs uMode serviceArns = do
         else filter (isValid . fst) svcRevs
 
   -- report the invalid services
-  tell invalidSvcs
+  tell' invalidSvcs
   maybe (pure ()) updateServiceRevs (nonEmpty toUpdate)
 
  where
@@ -167,27 +190,29 @@ updateTaskDefsWith cluster svcRevs uMode serviceArns = do
           DescribeServicesResult descs -> mapM_ updateService descs
   updateService :: ServiceDescription -> Sem r ()
   updateService (ServiceDescription cs mtd) = case mtd of
-    Nothing -> tell noTaskDefs
+    Nothing -> tell' noTaskDefs
     -- only process the given svc. if homogenous.
     Just ServiceTaskDef {..} | homogenousTaskDefs _sdAvailTaskDefs ->
       case latestTaskDef _sdAvailTaskDefs of
         Nothing -> tell noTaskDefs
         -- if the task-def in use is the latest, only update on `Force`. 
         Just td | td /= _sdCurTaskDef || uMode == Force -> callAWS td
-        Just _  -> tell nothingToDo
+        Just _  -> tell' nothingToDo
      where
-      callAWS td = tell
-        [UpdateTdFailed svcName $ "[NOT FAILED!] Update to: " <> arnText td]
-    Just std -> tell $ nonHomogenous std
+      callAWS td = tell'
+        [ServiceFailed svcName $ "[NOT FAILED!] Update to: " <> arnText td]
+    Just std -> tell' $ nonHomogenous std
    where
     svcName =
       Name @ 'AwsService . fromMaybe "UNKNOWN" $ cs ^. ECS.csServiceName
     noTaskDefs =
-      [UpdateTdFailed svcName "Cannot get ServiceTaskDef from DescribeService."]
+      [ServiceFailed svcName "Cannot get ServiceTaskDef from DescribeService."]
     nonHomogenous std =
-      [UpdateTdFailed svcName ("Non-Homogenous taskdefs: " <> show std)]
+      [ServiceFailed svcName ("Non-Homogenous taskdefs: " <> show std)]
     nothingToDo =
-      [ UpdateTdFailed
+      [ ServiceFailed
           svcName
           "Already using the latest TaskDef, use --force to override."
       ]
+
+  tell' = tell @[UpdateTaskDefResult]

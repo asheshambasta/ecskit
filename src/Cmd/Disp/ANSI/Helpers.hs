@@ -8,6 +8,7 @@ module Cmd.Disp.ANSI.Helpers
   , withStdColours
   , stdColours
   , indented
+  , indentedNoLeadingNewline
   , module System.Console.ANSI
   ) where
 
@@ -25,8 +26,7 @@ newline :: IO ()
 newline = putStrLn @Text ""
 
 heading :: Text -> IO ()
-heading h =
-  title h >> newline >> putStrLn (T.replicate (T.length h) "_") >> newline
+heading h = title h >> newline >> putStrLn (T.replicate (T.length h) "_")
 
 title :: Text -> IO ()
 title t = do
@@ -53,3 +53,6 @@ stdColours =
 
 indented :: (a -> Text) -> [a] -> Text
 indented show' = mappend "\n\t" . T.intercalate "\n\t" . fmap show'
+
+indentedNoLeadingNewline :: (a -> Text) -> a -> Text
+indentedNoLeadingNewline show' = mappend "\n\t" . show'
