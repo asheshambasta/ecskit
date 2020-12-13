@@ -17,32 +17,34 @@ module Cmd
   , describeClustersCmd
   , listAllServicesCmd
   , listTaskDefsCmd
+  , updateTaskDefsCmd
   , runCmd
   , runCmdExplicit
   , module AWS.Types
   ) where
 
+import           Lib.List                       ( groupedIn )
 import           Prelude                 hiding ( to )
 
 import           Cmd.Results
 
 import           Polysemy
+import           Polysemy.AWS
 import           Polysemy.Reader
 import           Polysemy.Writer
-import           Polysemy.AWS
 
-import qualified Data.Text                     as T
 import           Control.Lens
+import qualified Data.Text                     as T
 
 import "this"    AWS.Types
 
 import qualified Network.AWS                   as AWS
-import qualified Network.AWS.ECS.ListServices  as ECS
-import qualified Network.AWS.ECS.Types         as ECS
 import qualified Network.AWS.ECS.DescribeClusters
                                                as ECS
 import qualified Network.AWS.ECS.DescribeServices
                                                as ECS
+import qualified Network.AWS.ECS.ListServices  as ECS
+import qualified Network.AWS.ECS.Types         as ECS
 
 data AnyCmd where
   AnyCmd ::Cmd m a -> AnyCmd
@@ -80,6 +82,7 @@ runCmd = interpret $ runCmdExplicit >=> pure . \case
   DescribeClustersResult cs   -> cs
   ListServicesResult     svcs -> svcs
   ListTaskDefsResult     tds  -> tds
+  UpdateTaskDefsResult   tdrs -> tdrs
 
 runCmdExplicit
   :: forall a r m
@@ -88,18 +91,21 @@ runCmdExplicit
   -> Sem r (CmdResult a)
 runCmdExplicit cmd = case cmd of
   DescribeServicesCmd cluster services -> do
-    dsRes <- liftAWS . AWS.send $ ds
-    let containers = dsRes ^. ECS.dssrsServices
-        mkDesc container =
+    containers <- foldM allContainers mempty svcsGrouped
+    let mkDesc container =
           let mtd = taskDefArn <$> container ^. ECS.csTaskDefinition
           in  ServiceDescription container
                 <$> maybe (pure Nothing) (fmap Just . serviceTaskDef) mtd
     DescribeServicesResult <$> mapM mkDesc containers
    where
-    ds =
-      ECS.describeServices
-        & (ECS.dCluster ?~ unName cluster)
-        & (ECS.dServices .~ toList (unName <$> services))
+    -- AWS limits to a max. 10 services per describe-service query.
+    svcsGrouped = groupedIn 10 (toList services)
+    allContainers acc svcGroup =
+      let ds =
+            ECS.describeServices
+              & (ECS.dCluster ?~ unName cluster)
+              & (ECS.dServices .~ toList (unName <$> svcGroup))
+      in  mappend acc . view ECS.dssrsServices <$> liftAWS (AWS.send ds)
 
   DescribeClustersCmd dcs -> DescribeClustersResult <$> liftAWS (AWS.send dcs)
   ListAllServicesCmd (Name cluster) lt ->

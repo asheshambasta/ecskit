@@ -83,6 +83,36 @@ library ecskit-lib
     Polysemy.AWS
     AWS.Types
   other-modules: 
+    Lib.List 
+
+library ecskit-repl 
+  import: common-default-extensions
+        , common-ghc-options
+        , common-build-depends
+        
+  hs-source-dirs: 
+    src
+    exe
+  exposed-modules: 
+    Parse.Cmd
+    Parse.Conf 
+    Main 
+    Cmd
+    Cmd.Disp
+    Cmd.Results
+    Cmd.Disp.ANSI.Helpers
+    Conf 
+    Conf.Runtime 
+    Polysemy.AWS
+    AWS.Types
+    Lib.List
+  other-modules: 
+  build-depends: 
+    ecskit-lib
+    -- parsing options
+    , optparse-applicative
+
+
 
 executable ecskit 
   import: common-default-extensions
@@ -98,7 +128,8 @@ executable ecskit
   other-modules:  
     Parse.Cmd
     Parse.Conf
-          
+         
+ 
 -----------
 -- Tests --
 -----------
