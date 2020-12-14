@@ -96,20 +96,26 @@ instance Disp 'Terminal ECS.TaskDefinition where
     propertyNameContent "Revision" $ show <$> td ^. ECS.tdRevision
     propertyNameContent "Execution role ARN" $ td ^. ECS.tdExecutionRoleARN
     propertyNameContent "Task role ARN" $ td ^. ECS.tdTaskRoleARN
-    let rCompats =
-          Just
-            .  T.intercalate ", "
-            .  fmap show
-            $  td
-            ^. ECS.tdRequiresCompatibilities
+
     propertyNameContent "Requires compats" rCompats
-    let compats =
-          Just . T.intercalate ", " . fmap show $ td ^. ECS.tdCompatibilities
-    propertyNameContent "Compats" compats
+    propertyNameContent "Compats"          compats
     setSGR [SetColor Foreground Vivid Yellow]
     title "Container definitions"
     newline
     mapM_ (disp @ 'Terminal) (td ^. ECS.tdContainerDefinitions)
+   where
+    compats =
+      Just
+        .  T.intercalate ", "
+        .  fmap (T.drop 1 . show)
+        $  td
+        ^. ECS.tdCompatibilities
+    rCompats =
+      Just
+        .  T.intercalate ", "
+        .  fmap (T.drop 1 . show)
+        $  td
+        ^. ECS.tdRequiresCompatibilities
 
 instance Disp 'Terminal ECS.ContainerDefinition where
   disp cd = withAnsiReset $ do
@@ -146,6 +152,7 @@ instance Disp 'Terminal ECS.ContainerDefinition where
       mapM_ portMapping $ cd ^. ECS.cdPortMappings
     environment = unless (null $ cd ^. ECS.cdEnvironment) $ do
       propertyName "Environment"
+      newline
       let showEnv kv = fromMaybe "—" (kv ^. ECS.kvpName) <> "=" <> fromMaybe
             "—"
             (kv ^. ECS.kvpValue)
@@ -171,5 +178,5 @@ instance Disp 'Terminal ECS.ContainerDefinition where
         putStrLn . indented identity $ logOptions
        where
         logOptions =
-          [ k <> " : " <> v | (k, v) <- HM.toList (lc ^. ECS.lcOptions) ]
+          [ k <> ": " <> v | (k, v) <- HM.toList (lc ^. ECS.lcOptions) ]
       Nothing -> pure ()

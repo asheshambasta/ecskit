@@ -52,7 +52,7 @@ stdColours =
   setSGR [SetColor Foreground Vivid White, SetColor Background Vivid Black]
 
 indented :: (a -> Text) -> [a] -> Text
-indented show' = mappend "\n\t" . T.intercalate "\n\t" . fmap show'
+indented show' = mappend "\t" . T.intercalate "\n\t" . fmap show'
 
 indentedNoLeadingNewline :: (a -> Text) -> a -> Text
-indentedNoLeadingNewline show' = mappend "\n\t" . show'
+indentedNoLeadingNewline show' = mappend "\t" . show'
