@@ -1,7 +1,6 @@
 {-# LANGUAGE
     TemplateHaskell
   , BlockArguments
-  , StrictData
   , TypeApplications
   , TypeOperators
   , DataKinds
@@ -18,6 +17,7 @@ module Cmd
   , listAllServicesCmd
   , listTaskDefsCmd
   , updateTaskDefsCmd
+  , describeUsedTaskDefsCmd
   , runCmd
   , runCmdExplicit
   , module AWS.Types
@@ -82,11 +82,12 @@ runCmd
   => Sem (Cmd ': r) a
   -> Sem r a
 runCmd = interpret $ runCmdExplicit >=> pure . \case
-  DescribeServicesResult svcs -> svcs
-  DescribeClustersResult cs   -> cs
-  ListServicesResult     svcs -> svcs
-  ListTaskDefsResult     tds  -> tds
-  UpdateTaskDefsResult   tdrs -> tdrs
+  DescribeServicesResult     svcs -> svcs
+  DescribeClustersResult     cs   -> cs
+  ListServicesResult         svcs -> svcs
+  ListTaskDefsResult         tds  -> tds
+  UpdateTaskDefsResult       tdrs -> tdrs
+  DescribeUsedTaskDefsResult r    -> r
 
 runCmdExplicit
   :: forall a r m

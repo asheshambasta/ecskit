@@ -13,9 +13,11 @@ module Cmd.Disp
 
 import           Cmd.Disp.ANSI.Helpers
 import           Control.Lens
+
 import qualified Network.AWS.ECS.Types         as ECS
 
 import           Data.Aeson
+import qualified Data.HashMap.Strict           as HM
 import qualified Data.Text                     as T
 
 data DispMedium = Terminal | Json
@@ -114,10 +116,60 @@ instance Disp 'Terminal ECS.ContainerDefinition where
     setSGR [SetColor Foreground Vivid Yellow]
     propertyNameContent "Name" $ cd ^. ECS.cdName
     propertyNameContent "Image" $ cd ^. ECS.cdImage
+    propertyNameContent "Privileged" $ show <$> cd ^. ECS.cdPrivileged
+    propertyNameContent "Essential" $ show <$> cd ^. ECS.cdEssential
+    propertyNameContent "Memory (MiB)" $ show <$> cd ^. ECS.cdMemory
+    propertyNameContent "CPU" $ show <$> cd ^. ECS.cdCpu
+    dnsServers
+    portMappings
+    environment
     title "Command"
     putStrLn $ indented addSlash (cd ^. ECS.cdCommand)
-    title "Entrypoint"
-    putStrLn $ indented addSlash (cd ^. ECS.cdEntryPoint)
-    let networking = show <$> cd ^. ECS.cdDisableNetworking
-    propertyNameContent "Networking disabled" networking
-    where addSlash t = t <> " \\"
+    entryPoint
+    logConf
+   where
+
+    addSlash t = t <> " \\"
+    portMappings = unless (null $ cd ^. ECS.cdPortMappings) $ do
+      propertyName "Port mappings"
+      newline
+      let portMapping pm = do
+            propertyNameContent "Proto" $ show <$> pm ^. ECS.pmProtocol
+            putStrLn . indentedNoLeadingNewline identity $ T.unwords
+              [ "(Host)"
+              , showPort $ pm ^. ECS.pmHostPort
+              , "→ "
+              , showPort $ pm ^. ECS.pmContainerPort
+              , "(Container)"
+              ]
+          showPort = maybe "—" show
+      mapM_ portMapping $ cd ^. ECS.cdPortMappings
+    environment = unless (null $ cd ^. ECS.cdEnvironment) $ do
+      propertyName "Environment"
+      let showEnv kv = fromMaybe "—" (kv ^. ECS.kvpName) <> "=" <> fromMaybe
+            "—"
+            (kv ^. ECS.kvpValue)
+      putStrLn . indented identity $ showEnv <$> cd ^. ECS.cdEnvironment
+
+    dnsServers =
+      unless (null $ cd ^. ECS.cdDnsServers)
+        .  propertyNameContent "DNS Servers"
+        .  Just
+        .  T.intercalate ", "
+        $  cd
+        ^. ECS.cdDnsServers
+
+    entryPoint =
+      let ep = cd ^. ECS.cdEntryPoint
+      in  unless (null ep) $ do
+            title "Entrypoint"
+            putStrLn $ indented addSlash (cd ^. ECS.cdEntryPoint)
+
+    logConf = case cd ^. ECS.cdLogConfiguration of
+      Just lc -> do
+        propertyNameContent "Log driver" . Just . show $ lc ^. ECS.lcLogDriver
+        putStrLn . indented identity $ logOptions
+       where
+        logOptions =
+          [ k <> " : " <> v | (k, v) <- HM.toList (lc ^. ECS.lcOptions) ]
+      Nothing -> pure ()
