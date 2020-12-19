@@ -15,7 +15,9 @@ module Main
 import           Cmd
 import           Cmd.Disp
 import           Conf.Runtime
+import           Data.Version                   ( showVersion )
 import qualified Options.Applicative           as A
+import           Paths_ecs_kit                  ( version )
 
 import           Parse.Conf
 
@@ -36,7 +38,8 @@ main = do
 topLevelParse :: A.ParserInfo Conf
 topLevelParse = A.info
   (confParse <**> A.helper)
-  (A.fullDesc <> A.progDesc "ECSkit" <> A.header "Sane interaction with ECS.")
+  (A.fullDesc <> A.progDesc title <> A.header "Sane interaction with ECS.")
+  where title = "ECSKit " <> showVersion version
 
 type ExecResult = Either AWSError ()
 

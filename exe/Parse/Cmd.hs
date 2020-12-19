@@ -4,6 +4,7 @@ module Parse.Cmd
 
 import           Cmd
 import           Control.Lens
+import           Data.Default.Class             ( def )
 import qualified Network.AWS.ECS.DescribeClusters
                                                as ECS
 
@@ -85,8 +86,10 @@ updateTaskDef = AnyCmd <$> A.info updateOpts (A.progDesc "Update service.")
     (A.option A.auto $ A.long "revision" <> A.short 'R' <> A.help
       "Revision to use."
     )
-  modeOpts = A.option (A.eitherReader readEither)
-                      (A.long "mode" <> A.short 'M' <> A.help help)
+  modeOpts = A.option
+    (A.eitherReader readEither)
+    (A.long "mode" <> A.short 'M' <> A.help help <> A.value def <> A.showDefault
+    )
   help = "Mode of update; use one of: "
     <> intercalate ", " (show <$> enumFromTo @UpdateMode minBound maxBound)
 

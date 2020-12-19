@@ -246,7 +246,7 @@ updateTaskDefsWith cluster svcRevs uMode serviceArns = do
           <> show uMode
           <> "] Will update: "
           <> arnText _sdCurTaskDef
-          <> " → "
+          <> " →  "
           <> arnText td'
 
     Just std -> tell' $ nonHomogenous std
