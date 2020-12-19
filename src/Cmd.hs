@@ -23,6 +23,7 @@ module Cmd
   , module AWS.Types
   ) where
 
+import           Data.Default.Class             ( Default(..) )
 import           Lib.List                       ( groupedIn )
 import           Prelude                 hiding ( to )
 
@@ -35,6 +36,7 @@ import           Polysemy.Writer
 
 import           Control.Lens
 import           Control.Monad                  ( (<=<) )
+import qualified Data.List                     as L
 import qualified Data.Text                     as T
 
 import "this"    AWS.Commands.TaskDef
@@ -47,14 +49,12 @@ import qualified Network.AWS.ECS.DescribeServices
                                                as ECS
 import qualified Network.AWS.ECS.ListServices  as ECS
 import qualified Network.AWS.ECS.Types         as ECS
+import qualified Network.AWS.ECS.UpdateService as ECS
 
 data AnyCmd where
   AnyCmd ::Cmd m a -> AnyCmd
 
 deriving instance Show AnyCmd
-
-data UpdateMode = Force | NoForce
-                deriving (Eq, Show)
 
 data Cmd m a where
   DescribeServicesCmd ::ClusterName -> NonEmpty ServiceName -> Cmd m [ServiceDescription]
@@ -67,7 +67,7 @@ data Cmd m a where
   -- 3. The `UpdateMode` is used to specify the AWS equivalent of @--force-new-update@
   UpdateTaskDefsCmd ::ClusterName
                     -> [(ServiceName, Maybe Int)]
-                    -> UpdateMode
+                    -> Maybe UpdateMode
                     -> Cmd m [UpdateTaskDefResult]
   -- | Describe the used task definition by one or more services.
   DescribeUsedTaskDefsCmd ::ClusterName -> NonEmpty ServiceName -> Cmd m [(ServiceName, Maybe ECS.TaskDefinition)]
@@ -100,7 +100,9 @@ runCmdExplicit cmd = case cmd of
     let mkDesc container =
           let mtd = taskDefArn <$> container ^. ECS.csTaskDefinition
           in  ServiceDescription container
-                <$> maybe (pure Nothing) (fmap Just . serviceTaskDef) mtd
+                <$> maybe (pure Nothing)
+                          (fmap Just . runTaskDefCmd . tdGetServiceTaskDef)
+                          mtd
     DescribeServicesResult <$> mapM mkDesc containers
    where
     -- AWS limits to a max. 10 services per describe-service query.
@@ -126,7 +128,7 @@ runCmdExplicit cmd = case cmd of
   ListTaskDefsCmd f mStatus ->
     ListTaskDefsResult <$> runTaskDefCmd (tdListTaskDefs f mStatus)
 
-  UpdateTaskDefsCmd cluster svcRevs uMode ->
+  UpdateTaskDefsCmd cluster svcRevs (fromMaybe def -> uMode) ->
     runCmdExplicit (ListAllServicesCmd cluster Nothing) >>= \case
       ListServicesResult serviceArns ->
         fmap (UpdateTaskDefsResult . fst)
@@ -180,7 +182,7 @@ updateTaskDefsWith cluster svcRevs uMode serviceArns = do
         else filter (isValid . fst) svcRevs
 
   -- report the invalid services
-  tell' invalidSvcs
+  tell @[UpdateTaskDefResult] invalidSvcs
   maybe (pure ()) updateServiceRevs (nonEmpty toUpdate)
 
  where
@@ -194,26 +196,69 @@ updateTaskDefsWith cluster svcRevs uMode serviceArns = do
     Nothing -> tell' noTaskDefs
     -- only process the given svc. if homogenous.
     Just ServiceTaskDef {..} | homogenousTaskDefs _sdAvailTaskDefs ->
-      case latestTaskDef _sdAvailTaskDefs of
-        Nothing -> tell noTaskDefs
-        -- if the task-def in use is the latest, only update on `Force`. 
-        Just td | td /= _sdCurTaskDef || uMode == Force -> callAWS td
-        Just _  -> tell' nothingToDo
+      -- find if the user wanted to roll the service to a particular revision.
+      let mRev = join $ L.lookup svcName svcRevs
+      in  maybe updateToLatest updateToRevision mRev
      where
-      callAWS td = tell'
-        [ServiceFailed svcName $ "[NOT FAILED!] Update to: " <> arnText td]
+      updateToLatest = case latestTaskDef _sdAvailTaskDefs of
+        Nothing -> tell' noTaskDefs
+        -- if the task-def in use is the latest, only update on `Force`. 
+        Just td | td /= _sdCurTaskDef || uMode == Force ->
+          infoMsg td >> callAWS td
+        Just _ -> tell' nothingToDo
+      updateToRevision rev =
+        let tdArnOld              = TaskDefArn (Just rev) tdFamily
+            TaskDefArn _ tdFamily = _sdCurTaskDef
+        in  infoMsg tdArnOld >> callAWS tdArnOld
+      callAWS td'
+        | uMode == DryRun = pure ()
+        | otherwise = do
+          res <- runTaskDefCmd $ tdUpdateTaskDef cluster svcName uMode td'
+          -- ECS may respond with no `ECS.ContainerInstance` value, in this case, we must
+          -- attempt to describe the service again. If we're not that unlucky, we want to
+          -- use the returned `ECS.ContainerService` value to report the new service. 
+          maybe redescribe (fromContainerService td') $ res ^. ECS.usrsService
+
+      redescribe =
+        warnRedesc
+          >>  runCmdExplicit (DescribeServicesCmd cluster (pure svcName))
+          >>= \case
+                DescribeServicesResult descs ->
+                  tell @[UpdateTaskDefResult] (ServiceSuccess svcName <$> descs)
+
+      fromContainerService td' cs' =
+        -- fetch the task-def data again, and embed that in a new ServiceDescription.
+        serviceTaskDef td'
+          >>= tell'
+          .   ServiceSuccess svcName
+          .   ServiceDescription cs'
+          .   Just
+
+      warnRedesc =
+        tell'
+          . ServiceWarn svcName
+          $ "No ContainerService returned from ECS on `update-service`."
+
+      infoMsg td' =
+        tell'
+          .  ServiceInfo svcName
+          $  "["
+          <> show uMode
+          <> "] Will update: "
+          <> arnText _sdCurTaskDef
+          <> " → "
+          <> arnText td'
+
     Just std -> tell' $ nonHomogenous std
    where
     svcName =
       Name @ 'AwsService . fromMaybe "UNKNOWN" $ cs ^. ECS.csServiceName
     noTaskDefs =
-      [ServiceFailed svcName "Cannot get ServiceTaskDef from DescribeService."]
+      ServiceFailed svcName "Cannot get ServiceTaskDef from DescribeService."
     nonHomogenous std =
-      [ServiceFailed svcName ("Non-Homogenous taskdefs: " <> show std)]
-    nothingToDo =
-      [ ServiceFailed
-          svcName
-          "Already using the latest TaskDef, use --force to override."
-      ]
+      ServiceFailed svcName $ "Non-Homogenous taskdefs: " <> show std
+    nothingToDo = ServiceFailed
+      svcName
+      "Already using the latest TaskDef, use `Force` to override."
 
-  tell' = tell @[UpdateTaskDefResult]
+  tell' = tell @[UpdateTaskDefResult] . pure

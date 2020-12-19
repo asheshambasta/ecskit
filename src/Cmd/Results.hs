@@ -38,12 +38,14 @@ instance Disp 'Terminal ServiceDescription where
     where noTaskDef = putStrLn @Text "No TaskDef data found."
 
 -- | A Multiple service operation; which can result in success or failures by service.
-data ServiceResult failure success = ServiceFailed ServiceName failure
-                                   | ServiceSuccess ServiceName success
-                                   deriving (Eq, Show)
+data ServiceResult failure success info = ServiceFailed ServiceName failure
+                                        | ServiceSuccess ServiceName success
+                                        | ServiceInfo ServiceName info
+                                        | ServiceWarn ServiceName failure
+                                        deriving (Eq, Show)
 
 -- | Result of updating the task definition of a service
-type UpdateTaskDefResult = ServiceResult Text ServiceDescription
+type UpdateTaskDefResult = ServiceResult Text ServiceDescription Text
 
 data CmdResult a where
   DescribeClustersResult ::ECS.DescribeClustersResponse -> CmdResult ECS.DescribeClustersResponse
@@ -71,14 +73,28 @@ instance Disp 'Terminal (CmdResult a) where
           >> disp @ 'Terminal mtd
 
 instance Disp 'Terminal UpdateTaskDefResult where
-  disp = \case
+  disp = withAnsiReset . withStdColours . \case
 
-    ServiceFailed name msg -> withAnsiReset . withStdColours $ do
-      setSGR [SetColor Foreground Vivid Red]
+    ServiceFailed name (mappend "[FAILED] " -> msg) -> do
       disp @ 'Terminal name
+      setSGR [SetColor Foreground Vivid Red]
       putStrLn $ indentedNoLeadingNewline identity msg
 
-    ServiceSuccess _ desc -> disp @ 'Terminal desc
+    ServiceInfo name (mappend "[INFO] " -> info') -> do
+      disp @ 'Terminal name
+      setSGR [SetColor Foreground Vivid Magenta]
+      putStrLn $ indentedNoLeadingNewline identity info'
+
+    ServiceSuccess name desc -> do
+      disp @ 'Terminal name
+      setSGR [SetColor Foreground Vivid Green]
+      putStrLn @Text "[SUCCESS]"
+      disp @ 'Terminal desc
+
+    ServiceWarn name (mappend "[WARNING] " -> warning) -> do
+      disp @ 'Terminal name
+      setSGR [SetColor Foreground Vivid Yellow]
+      putStrLn warning
 
 instance Semigroup (CmdResult [UpdateTaskDefResult]) where
   (UpdateTaskDefsResult rs0) <> (UpdateTaskDefsResult rs1) =

@@ -15,13 +15,11 @@ module Conf.Runtime
   , mkRuntime
   ) where
 
-import           Polysemy
-import           Polysemy.Reader
+import           Conf
+import           Control.Lens
 import           Control.Monad.Catch            ( MonadCatch )
 import qualified Network.AWS                   as AWS
 import qualified Network.AWS.Env               as Env
-import           Control.Lens
-import           Conf
 
 -- | Execution runtime, this is the container of the configuration at runtime.
 data Runtime = Runtime

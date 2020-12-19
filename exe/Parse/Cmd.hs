@@ -80,13 +80,15 @@ updateTaskDef = AnyCmd <$> A.info updateOpts (A.progDesc "Update service.")
     Cmd.UpdateTaskDefsCmd
       <$> clusterName
       <*> many serviceNameRevision
-      <*> A.flag Cmd.NoForce
-                 Cmd.Force
-                 (A.long "force" <> A.short 'F' <> A.help "Force update.")
+      <*> A.optional modeOpts
   serviceNameRevision = (,) <$> serviceName <*> A.optional
     (A.option A.auto $ A.long "revision" <> A.short 'R' <> A.help
       "Revision to use."
     )
+  modeOpts = A.option (A.eitherReader readEither)
+                      (A.long "mode" <> A.short 'M' <> A.help help)
+  help = "Mode of update; use one of: "
+    <> intercalate ", " (show <$> enumFromTo @UpdateMode minBound maxBound)
 
 describeUsedTaskDef :: A.ParserInfo AnyCmd
 describeUsedTaskDef = AnyCmd
