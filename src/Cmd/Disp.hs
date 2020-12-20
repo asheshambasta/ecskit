@@ -14,7 +14,8 @@ module Cmd.Disp
 import           Cmd.Disp.ANSI.Helpers
 import           Control.Lens
 
-import qualified Network.AWS.ECS.Types         as ECS
+import qualified Network.AWS.ECR               as ECR
+import qualified Network.AWS.ECS               as ECS
 
 import           Data.Aeson
 import qualified Data.HashMap.Strict           as HM
@@ -180,3 +181,23 @@ instance Disp 'Terminal ECS.ContainerDefinition where
         logOptions =
           [ k <> ": " <> v | (k, v) <- HM.toList (lc ^. ECS.lcOptions) ]
       Nothing -> pure ()
+
+instance Disp 'Terminal [ECR.ImageDetail] where
+  disp = withAnsiReset . withStdColours . mapM_ dispH . reverse . sortOn
+    (view ECR.idImageTags)
+    where dispH det = disp @ 'Terminal det >> yellowFg >> putStrLn @Text "***"
+
+instance Disp 'Terminal ECR.ImageDetail where
+  disp det = withAnsiReset . withStdColours $ do
+    yellowFg
+    propertyNameContent "Repository" $ det ^. ECR.idRepositoryName
+    propertyNameContent "Tags" tags
+    propertyNameContent "Registry ID" $ det ^. ECR.idRegistryId
+    propertyNameContent "Digest" $ det ^. ECR.idImageDigest
+    propertyNameContent "Pushed at" $ show <$> det ^. ECR.idImagePushedAt
+    propertyNameContent "Image size" kbs
+   where
+    kbs  = (<> " kB") . show . flip div 1024 <$> det ^. ECR.idImageSizeInBytes
+    tags = Just . T.intercalate ", " . sort $ det ^. ECR.idImageTags
+
+yellowFg = setSGR [SetColor Foreground Vivid Yellow]

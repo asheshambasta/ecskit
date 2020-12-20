@@ -13,6 +13,7 @@ module AWS.Commands.TaskDef
   , tdUpdateTaskDef
   , serviceTaskDef
   , runTaskDefCmd
+  , taskDefsFromDescs
   , TaskDefCmd(..)
   , UpdateMode(..)
   ) where
@@ -27,6 +28,8 @@ import qualified Network.AWS.ECS               as ECS
 import           Polysemy
 import           Polysemy.AWS
 import           Polysemy.Reader
+
+import           Cmd.Results
 
 data UpdateMode =
   Force     -- ^ --force-new-deployment 
@@ -68,7 +71,7 @@ tdDescribe'
   => [(TaskDefName, Maybe ECS.TaskDefinition)]
   -> TaskDefName
   -> Sem r [(TaskDefName, Maybe ECS.TaskDefinition)]
-tdDescribe' acc name@(Name td) =
+tdDescribe' acc name@(TaskDefName td) =
   let d = ECS.describeTaskDefinition td
   in  mappend acc . pure . (name, ) . view ECS.desrsTaskDefinition <$> liftAWS
         (AWS.send d)
@@ -96,4 +99,18 @@ serviceTaskDef
   -> Sem r ServiceTaskDef
 serviceTaskDef arn@(TaskDefArn _ (TaskDefFamilyArn f _)) =
   ServiceTaskDef arn . sortOn Down <$> listTaskDefs' f Nothing
+
+-- | Get the full `ECS.TaskDefinition`'s from the currently used task-definitions in `ServiceDescription`'s
+taskDefsFromDescs
+  :: forall r
+   . (Members '[Reader AWS.Env , Embed IO , Error AWSError] r)
+  => [ServiceDescription]
+  -> Sem r [(ServiceName, Maybe ECS.TaskDefinition)]
+taskDefsFromDescs = mapM descTd
+ where
+  descTd (ServiceDescription cs mStd) = runTaskDefCmd $ case mStd of
+    Nothing -> pure (sName, Nothing)
+    Just ServiceTaskDef { _sdCurTaskDef = arnText -> td } ->
+      (sName, ) . (snd <=< headMay) <$> tdDescribeTaskDefs [TaskDefName td]
+    where sName = ServiceName . fromMaybe "UNKNOWN" $ cs ^. ECS.csServiceName
 

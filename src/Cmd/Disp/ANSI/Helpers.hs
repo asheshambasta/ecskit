@@ -48,8 +48,7 @@ withStdColours :: IO a -> IO a
 withStdColours op = stdColours >> op
 
 stdColours :: IO ()
-stdColours =
-  setSGR [SetColor Foreground Vivid White, SetColor Background Vivid Black]
+stdColours = setSGR [SetColor Foreground Vivid White]
 
 indented :: (a -> Text) -> [a] -> Text
 indented show' = mappend "\t" . T.intercalate "\n\t" . fmap show'

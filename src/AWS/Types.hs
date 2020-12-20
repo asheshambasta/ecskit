@@ -15,6 +15,13 @@ module AWS.Types
   , ClusterName
   , ServiceName
   , TaskDefName
+  , ContainerDefName
+  , EcrRepoName
+  , pattern ClusterName
+  , pattern ServiceName
+  , pattern TaskDefName
+  , pattern ContainerDefName
+  , pattern EcrRepoName
   , TaskDefFamily(..)
   , pattern TaskDefFamily
   -- * ARNs
@@ -39,7 +46,9 @@ import qualified Data.Text                     as T
 data AwsType = AwsService
              | AwsCluster
              | AwsTaskDef
+             | AwsEcsContainerDef
              | AwsTaskDefFamily
+             | AwsEcrRepo
              deriving (Show, Eq)
 
 data Arn (t :: AwsType) where
@@ -69,10 +78,37 @@ taskDefArn txt =
         else TaskDefArn (readMaybe $ T.unpack rev)
           $ TaskDefFamilyArn family rest
 
-newtype Name (t :: AwsType) = Name { unName :: Text } deriving (Eq, Show, Ord, IsString) via Text
+{-# COMPLETE ClusterName, ServiceName, TaskDefName, EcrRepoName, ContainerDefName #-}
+newtype Name (t :: AwsType) = UnsafeName { unName :: Text } deriving (Eq, Show, Ord, IsString) via Text
+
 type ClusterName = Name 'AwsCluster
 type ServiceName = Name 'AwsService
 type TaskDefName = Name 'AwsTaskDef
+type ContainerDefName = Name 'AwsEcsContainerDef
+type EcrRepoName = Name 'AwsEcrRepo
+
+pattern ClusterName :: Text -> ClusterName
+pattern ClusterName n <- UnsafeName n where
+  ClusterName n = UnsafeName n
+
+pattern ServiceName :: Text -> ServiceName
+pattern ServiceName n <- UnsafeName n where
+  ServiceName n = UnsafeName n
+
+pattern TaskDefName :: Text -> TaskDefName
+pattern TaskDefName n <- UnsafeName n where
+  TaskDefName n = UnsafeName n
+
+pattern ContainerDefName :: Text -> ContainerDefName
+pattern ContainerDefName n <- UnsafeName n where
+  ContainerDefName n = UnsafeName n
+
+pattern EcrRepoName :: Text -> EcrRepoName
+pattern EcrRepoName n <- UnsafeName n where
+  EcrRepoName n =
+    let (pre, _) = T.breakOnEnd ":" n
+        takeName = UnsafeName . T.takeWhileEnd (/= '/')
+    in  takeName $ if T.null pre then n else T.dropEnd 1 pre
 
 -- | Status of the service's TaskDefintion.
 data ServiceTaskDef = ServiceTaskDef
@@ -122,4 +158,8 @@ instance Disp 'Terminal [Arn t] where
                                                              (Just arnsStr)
 
 instance Disp 'Terminal (Name n) where
-  disp (Name n) = setSGR [SetColor Foreground Vivid Cyan] >> heading n
+  disp (UnsafeName n) = setSGR [SetColor Foreground Vivid Cyan] >> heading n
+
+instance {-# OVERLAPPING #-} Disp 'Terminal ContainerDefName where
+  disp (UnsafeName (mappend "ContainerDef: " -> n)) =
+    setSGR [SetColor Foreground Vivid Yellow] >> heading n

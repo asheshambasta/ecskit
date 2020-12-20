@@ -24,6 +24,8 @@ module Cmd
   ) where
 
 import           Data.Default.Class             ( Default(..) )
+import qualified Data.Map                      as M
+
 import           Lib.List                       ( groupedIn )
 import           Prelude                 hiding ( to )
 
@@ -39,6 +41,7 @@ import           Control.Monad                  ( (<=<) )
 import qualified Data.List                     as L
 import qualified Data.Text                     as T
 
+import "this"    AWS.Commands.ECR              as ECR
 import "this"    AWS.Commands.TaskDef
 import "this"    AWS.Types
 
@@ -71,6 +74,9 @@ data Cmd m a where
                     -> Cmd m [UpdateTaskDefResult]
   -- | Describe the used task definition by one or more services.
   DescribeUsedTaskDefsCmd ::ClusterName -> NonEmpty ServiceName -> Cmd m [(ServiceName, Maybe ECS.TaskDefinition)]
+
+  -- | Goes through a service's container definitions to find ECR images, and describes these images
+  DescribeServiceImagesCmd ::ClusterName -> NonEmpty ServiceName -> Cmd m (Map ServiceName ServiceContainerImages)
 
 makeSem ''Cmd
 deriving instance Show (Cmd m a)
@@ -115,7 +121,7 @@ runCmdExplicit cmd = case cmd of
       in  mappend acc . view ECS.dssrsServices <$> liftAWS (AWS.send ds)
 
   DescribeClustersCmd dcs -> DescribeClustersResult <$> liftAWS (AWS.send dcs)
-  ListAllServicesCmd (Name cluster) lt ->
+  ListAllServicesCmd cname lt ->
     ListServicesResult
       .   concatMap (fmap ServiceArn . view ECS.lsrsServiceARNs)
       <$> collectAWSResponses initReq
@@ -123,7 +129,9 @@ runCmdExplicit cmd = case cmd of
                               (view ECS.lsrsNextToken)
    where
     initReq =
-      ECS.listServices & ECS.lsCluster ?~ cluster & ECS.lsLaunchType .~ lt
+      ECS.listServices
+        & (ECS.lsCluster ?~ unName cname)
+        & (ECS.lsLaunchType .~ lt)
 
   ListTaskDefsCmd f mStatus ->
     ListTaskDefsResult <$> runTaskDefCmd (tdListTaskDefs f mStatus)
@@ -137,21 +145,13 @@ runCmdExplicit cmd = case cmd of
 
   DescribeUsedTaskDefsCmd c svcs ->
     runCmdExplicit (DescribeServicesCmd c svcs) >>= \case
-      DescribeServicesResult descs -> taskDefsFromDescs descs
+      DescribeServicesResult descs ->
+        DescribeUsedTaskDefsResult <$> taskDefsFromDescs descs
 
-taskDefsFromDescs
-  :: forall r
-   . (Members '[Reader AWS.Env , Embed IO , Error AWSError] r)
-  => [ServiceDescription]
-  -> Sem r (CmdResult [(ServiceName, Maybe ECS.TaskDefinition)])
-taskDefsFromDescs descs = DescribeUsedTaskDefsResult <$> mapM descTd descs
- where
-  descTd (ServiceDescription cs mStd) = runTaskDefCmd $ case mStd of
-    Nothing -> pure (sName, Nothing)
-    Just ServiceTaskDef { _sdCurTaskDef = arnText -> td } ->
-      (sName, ) . (snd <=< headMay) <$> tdDescribeTaskDefs [Name td]
-   where
-    sName = Name @ 'AwsService . fromMaybe "UNKNOWN" $ cs ^. ECS.csServiceName
+  DescribeServiceImagesCmd c svcs ->
+    -- first get the full service desc. 
+    runCmdExplicit (DescribeServicesCmd c svcs) >>= \case
+      DescribeServicesResult descs -> taskDefsFromDescs descs >>= taskDefImages
 
 updateTaskDefsWith
   :: forall r
@@ -170,16 +170,17 @@ updateTaskDefsWith
   -> Sem r ()
 updateTaskDefsWith cluster svcRevs uMode serviceArns = do
       -- the user supplied service names may or may not be the full service ARNs.
-  let invalidSvcs =
-        (`ServiceFailed` "Service not found.")
-          <$> filter (not . isValid) givenSvcs
-      serviceTexts = [ s | ServiceArn s <- serviceArns ]
-      isValid (Name svc) = isJust . find (svc `T.isSuffixOf`) $ serviceTexts
-      -- these are services we want to update: if the user didn't specify any svcs, we update all
-      -- in the cluster.
-      toUpdate = if null svcRevs
-        then (, Nothing) . Name <$> serviceTexts
-        else filter (isValid . fst) svcRevs
+  let
+    invalidSvcs =
+      (`ServiceFailed` "Service not found.")
+        <$> filter (not . isValid) givenSvcs
+    serviceTexts = arnText <$> serviceArns
+    isValid (unName -> svc) = isJust . find (svc `T.isSuffixOf`) $ serviceTexts
+    -- these are services we want to update: if the user didn't specify any svcs, we update all
+    -- in the cluster.
+    toUpdate = if null svcRevs
+      then (, Nothing) . ServiceName <$> serviceTexts
+      else filter (isValid . fst) svcRevs
 
   -- report the invalid services
   tell @[UpdateTaskDefResult] invalidSvcs
@@ -251,8 +252,7 @@ updateTaskDefsWith cluster svcRevs uMode serviceArns = do
 
     Just std -> tell' $ nonHomogenous std
    where
-    svcName =
-      Name @ 'AwsService . fromMaybe "UNKNOWN" $ cs ^. ECS.csServiceName
+    svcName = ServiceName . fromMaybe "UNKNOWN" $ cs ^. ECS.csServiceName
     noTaskDefs =
       ServiceFailed svcName "Cannot get ServiceTaskDef from DescribeService."
     nonHomogenous std =
@@ -262,3 +262,19 @@ updateTaskDefsWith cluster svcRevs uMode serviceArns = do
       "Already using the latest TaskDef, use `Force` to override."
 
   tell' = tell @[UpdateTaskDefResult] . pure
+
+taskDefImages
+  :: forall r
+   . (Members '[Reader AWS.Env , Embed IO , Error AWSError] r)
+  => [(ServiceName, Maybe ECS.TaskDefinition)]
+  -> Sem r (CmdResult (Map ServiceName ServiceContainerImages))
+taskDefImages = fmap (DescribeServiceImagesResult . M.fromList)
+  . mapM maybeImages
+ where
+  maybeImages (sName, Nothing) = pure (sName, ServiceContainerImages mempty)
+  maybeImages (sName, Just td) =
+    fmap ((sName, ) . ServiceContainerImages)
+      . runEcrCmd
+      . ecrDescribeTaskDefImages
+      $ td
+

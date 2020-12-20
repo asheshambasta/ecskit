@@ -33,6 +33,7 @@ cmdParse =
           <> altCmds ["u", "update-task-definition"] updateTaskDef
           <> altCmds ["dutd", "describe-used-task-definition"]
                      describeUsedTaskDef
+          <> altCmds ["describe-service-images", "dsi"] describeSvcImages
     in  A.info parser $ A.progDesc "Service commands."
   clusterCmds =
     let parser =
@@ -92,6 +93,12 @@ updateTaskDef = AnyCmd <$> A.info updateOpts (A.progDesc "Update service.")
     )
   help = "Mode of update; use one of: "
     <> intercalate ", " (show <$> enumFromTo @UpdateMode minBound maxBound)
+
+describeSvcImages :: A.ParserInfo AnyCmd
+describeSvcImages = AnyCmd
+  <$> A.info opts (A.progDesc "Describe service's ECR images.")
+ where
+  opts = Cmd.DescribeServiceImagesCmd <$> clusterName <*> many1 serviceName
 
 describeUsedTaskDef :: A.ParserInfo AnyCmd
 describeUsedTaskDef = AnyCmd

@@ -7,11 +7,15 @@ module Cmd.Results
   ( ServiceDescription(..)
   , sdContainerService
   , sdServiceTaskDef
+  , ServiceContainerImages(..)
+  , sciContainerImages
   , ServiceResult(..)
   , UpdateTaskDefResult
   -- * The all encompassing result type
   , CmdResult(..)
   ) where
+
+import qualified Data.Map                      as M
 
 import           Control.Lens
 
@@ -19,6 +23,7 @@ import           Cmd.Disp
 import           Cmd.Disp.ANSI.Helpers
 
 import "this"    AWS.Types
+import qualified Network.AWS.ECR               as ECR
 import qualified Network.AWS.ECS               as ECS
 
 data ServiceDescription = ServiceDescription
@@ -37,6 +42,12 @@ instance Disp 'Terminal ServiceDescription where
       >> maybe noTaskDef (disp @ 'Terminal) mTd
     where noTaskDef = putStrLn @Text "No TaskDef data found."
 
+newtype ServiceContainerImages = ServiceContainerImages
+  { _sciContainerImages :: Map ContainerDefName [ECR.ImageDetail]
+  } deriving (Eq, Show) via (Map ContainerDefName [ECR.ImageDetail])
+
+makeLenses ''ServiceContainerImages
+
 -- | A Multiple service operation; which can result in success or failures by service.
 data ServiceResult failure success info = ServiceFailed ServiceName failure
                                         | ServiceSuccess ServiceName success
@@ -54,6 +65,7 @@ data CmdResult a where
   ListTaskDefsResult ::[Arn 'AwsTaskDef] -> CmdResult [Arn 'AwsTaskDef]
   UpdateTaskDefsResult ::[UpdateTaskDefResult] -> CmdResult [UpdateTaskDefResult]
   DescribeUsedTaskDefsResult ::[(ServiceName, Maybe ECS.TaskDefinition)] -> CmdResult [(ServiceName, Maybe ECS.TaskDefinition)]
+  DescribeServiceImagesResult ::Map ServiceName ServiceContainerImages -> CmdResult (Map ServiceName ServiceContainerImages)
 
 instance Disp 'Terminal (CmdResult a) where
   disp = \case
@@ -71,6 +83,15 @@ instance Disp 'Terminal (CmdResult a) where
           .  withStdColours
           $  disp @ 'Terminal s
           >> disp @ 'Terminal mtd
+    DescribeServiceImagesResult (M.toList -> results) -> mapM_ dispServices
+                                                               results
+     where
+      dispServices (sName, ServiceContainerImages (M.toList -> imgs)) =
+        disp @ 'Terminal sName >> mapM_ dispContainers imgs
+      dispContainers (cName, imgs) = do
+        disp @ 'Terminal cName
+        setSGR [SetColor Foreground Vivid Yellow]
+        disp @ 'Terminal imgs
 
 instance Disp 'Terminal UpdateTaskDefResult where
   disp = withAnsiReset . withStdColours . \case

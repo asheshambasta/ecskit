@@ -62,6 +62,7 @@ common common-build-depends
     , amazonka
     , amazonka-core
     , amazonka-ecs
+    , amazonka-ecr
   mixins: base hiding (Prelude)
     
 ------------------
@@ -85,6 +86,7 @@ library ecskit-lib
     Polysemy.AWS
     AWS.Types
     AWS.Commands.TaskDef
+    AWS.Commands.ECR
     Paths_ecs_kit
   other-modules: 
     Lib.List 
@@ -111,6 +113,7 @@ library ecskit-repl
     AWS.Types
     AWS.Commands.TaskDef
     Lib.List
+    Paths_ecs_kit
   other-modules: 
   build-depends: 
     ecskit-lib
@@ -133,7 +136,7 @@ executable ecskit
   other-modules:  
     Parse.Cmd
     Parse.Conf
-         
+    Paths_ecs_kit
  
 -----------
 -- Tests --
