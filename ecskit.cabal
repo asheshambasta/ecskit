@@ -45,8 +45,6 @@ common common-build-depends
   build-depends:
       base
     , text
-    , containers
-    , unordered-containers
     , lens
     , data-default-class
     , aeson
@@ -56,15 +54,21 @@ common common-build-depends
     , http-api-data
     , http-types
     , protolude
-    , ansi-terminal
     , polysemy
     , prelude-polysemy
     , amazonka
     , amazonka-core
     , amazonka-ecs
-    , amazonka-ecr
   mixins: base hiding (Prelude)
-    
+
+common lib-build-depends
+  build-depends:
+      hrfsize
+    , amazonka-ecr
+    , ansi-terminal
+    , containers
+    , unordered-containers
+     
 ------------------
 -- Core library --
 ------------------
@@ -74,6 +78,7 @@ library ecskit-lib
   import: common-default-extensions
         , common-ghc-options
         , common-build-depends
+        , lib-build-depends
         
   hs-source-dirs: src
   exposed-modules: 
@@ -90,11 +95,13 @@ library ecskit-lib
     Paths_ecs_kit
   other-modules: 
     Lib.List 
+  
 
 library ecskit-repl 
   import: common-default-extensions
         , common-ghc-options
         , common-build-depends
+        , lib-build-depends
         
   hs-source-dirs: 
     src

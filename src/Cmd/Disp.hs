@@ -13,6 +13,9 @@ module Cmd.Disp
 
 import           Cmd.Disp.ANSI.Helpers
 import           Control.Lens
+import           System.HrfSize                 ( FileSize(..)
+                                                , convertSize
+                                                )
 
 import qualified Network.AWS.ECR               as ECR
 import qualified Network.AWS.ECS               as ECS
@@ -195,9 +198,21 @@ instance Disp 'Terminal ECR.ImageDetail where
     propertyNameContent "Registry ID" $ det ^. ECR.idRegistryId
     propertyNameContent "Digest" $ det ^. ECR.idImageDigest
     propertyNameContent "Pushed at" $ show <$> det ^. ECR.idImagePushedAt
-    propertyNameContent "Image size" kbs
+    propertyName "Image size"
+    disp @ 'Terminal size
+    newline
    where
-    kbs  = (<> " kB") . show . flip div 1024 <$> det ^. ECR.idImageSizeInBytes
+    size = convertSize . fromIntegral <$> det ^. ECR.idImageSizeInBytes
     tags = Just . T.intercalate ", " . sort $ det ^. ECR.idImageTags
 
+yellowFg :: IO ()
 yellowFg = setSGR [SetColor Foreground Vivid Yellow]
+
+instance Disp 'Terminal FileSize where
+  disp = \case
+    Bytes b -> putStr' b " bytes"
+    KiB   s -> putStr' s " KiB"
+    MiB   s -> putStr' s " MiB"
+    GiB   s -> putStr' s " GiB"
+    TiB   s -> putStr' s " TiB"
+    where putStr' b st = putStr @Text $ show b <> st
