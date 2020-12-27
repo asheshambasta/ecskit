@@ -59,6 +59,8 @@ common common-build-depends
     , amazonka
     , amazonka-core
     , amazonka-ecs
+
+    , megaparsec 
   mixins: base hiding (Prelude)
 
 common lib-build-depends
@@ -95,7 +97,7 @@ library ecskit-lib
     Paths_ecs_kit
   other-modules: 
     Lib.List 
-  
+    Lib.Parse 
 
 library ecskit-repl 
   import: common-default-extensions
@@ -120,6 +122,7 @@ library ecskit-repl
     AWS.Types
     AWS.Commands.TaskDef
     Lib.List
+    Lib.Parse
     Paths_ecs_kit
   other-modules: 
   build-depends: 

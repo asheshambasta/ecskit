@@ -22,6 +22,7 @@ module AWS.Types
   , pattern TaskDefName
   , pattern ContainerDefName
   , pattern EcrRepoName
+  , parseEcrRepo
   , TaskDefFamily(..)
   , pattern TaskDefFamily
   -- * ARNs
@@ -38,6 +39,9 @@ module AWS.Types
   , isLatestTaskDef
   ) where
 
+import qualified Data.Char                     as C
+import qualified Lib.Parse                     as P
+import qualified Text.Megaparsec               as P
 import           Cmd.Disp
 import           Cmd.Disp.ANSI.Helpers
 
@@ -79,13 +83,52 @@ taskDefArn txt =
           $ TaskDefFamilyArn family rest
 
 {-# COMPLETE ClusterName, ServiceName, TaskDefName, EcrRepoName, ContainerDefName #-}
-newtype Name (t :: AwsType) = UnsafeName { unName :: Text } deriving (Eq, Show, Ord, IsString) via Text
+newtype Name (t :: AwsType) name = UnsafeName { unName :: name } deriving (Eq, Show, Ord, IsString) via name
 
-type ClusterName = Name 'AwsCluster
-type ServiceName = Name 'AwsService
-type TaskDefName = Name 'AwsTaskDef
-type ContainerDefName = Name 'AwsEcsContainerDef
-type EcrRepoName = Name 'AwsEcrRepo
+type ClusterName = Name 'AwsCluster Text
+type ServiceName = Name 'AwsService Text
+type TaskDefName = Name 'AwsTaskDef Text
+type ContainerDefName = Name 'AwsEcsContainerDef Text
+
+{- | ECR repos are structured as:
+@@
+<_ecrrRegId>.dkr.ecr.<region>.amazonaws.com/<_ecrrRepo>:<_ecrrTag>
+            |--          _ecrrHost       --|
+@@
+
+RegId values are numeric.
+-}
+data EcrRepo = EcrRepo
+  { _ecrrRegId :: Text
+  , _ecrrHost  :: Text
+  , _ecrrRepo  :: Text
+  , _ecrrTag   :: Text
+  }
+  deriving (Eq, Show)
+
+parseEcrRepo :: P.ParserText EcrRepo
+parseEcrRepo = do
+  _ecrrRegId <- P.takeWhile1P (Just "_ecrrRegId") C.isNumber
+  P.char '.'
+  _ecrrHost <- P.takeWhile1P (Just "_ecrrHost") (/= '/')
+  P.char '/'
+  _ecrrRepo <- P.takeWhile1P (Just "_ecrrRepo") (/= ':')
+  P.char ':'
+  _ecrrTag <- P.takeRest
+  pure EcrRepo { .. }
+-- ecrRepo :: Text ->  EcrRepo
+-- ecrRepo reg =
+--   let (pre, _ecrrTag) = T.breakOnEnd ":" reg
+--       -- the registry id is a number
+--       _ecrrRegId      = T.takeWhile C.isNumber pre
+--       _ecrrRepo       = T.takeWhileEnd (/= '/') pre
+--       _ecrrHost       = T.dropk
+--   in  undefined
+
+-- pattern EcrRepo' :: Text -> Maybe EcrRepo
+-- pattern EcrRepo' n 
+
+type EcrRepoName = Name 'AwsEcrRepo Text
 
 pattern ClusterName :: Text -> ClusterName
 pattern ClusterName n <- UnsafeName n where
@@ -157,7 +200,7 @@ instance Disp 'Terminal [Arn t] where
     in  withAnsiReset . withStdColours $ propertyNameContent "ARNs"
                                                              (Just arnsStr)
 
-instance Disp 'Terminal (Name n) where
+instance Disp 'Terminal (Name t Text) where
   disp (UnsafeName n) = setSGR [SetColor Foreground Vivid Cyan] >> heading n
 
 instance {-# OVERLAPPING #-} Disp 'Terminal ContainerDefName where
