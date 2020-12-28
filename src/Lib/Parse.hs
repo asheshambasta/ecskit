@@ -18,11 +18,13 @@ module Lib.Parse
   , parseInt
   , parseInteger
   , parseTextAscii
+  , takeUntil1P
   ) where
 
 import           Data.Char                      ( isDigit )
 import qualified Data.Set                      as Set
                                                 ( singleton )
+import           Data.String                    ( String )
 import qualified Data.Text                     as T
                                                 ( pack
                                                 , unpack
@@ -69,3 +71,6 @@ parseInteger = do
 
 parse' :: ParserText a -> Text -> Either (ParseErrorBundle Text FParseErr) a
 parse' p src = parse p env' src where env' = T.unpack src
+
+takeUntil1P :: Maybe String -> Char -> ParserText Text
+takeUntil1P mname c = takeWhile1P mname (/= c)

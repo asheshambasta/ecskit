@@ -22,7 +22,14 @@ module AWS.Types
   , pattern TaskDefName
   , pattern ContainerDefName
   , pattern EcrRepoName
-  , parseEcrRepo
+  , EcrImage(..)
+  , parseEcrImage
+  , writeEcrImage
+  , ecrImage
+  , ecriRegId
+  , ecriHost
+  , ecriRepo
+  , ecriTag
   , TaskDefFamily(..)
   , pattern TaskDefFamily
   -- * ARNs
@@ -39,11 +46,10 @@ module AWS.Types
   , isLatestTaskDef
   ) where
 
-import qualified Data.Char                     as C
-import qualified Lib.Parse                     as P
-import qualified Text.Megaparsec               as P
 import           Cmd.Disp
 import           Cmd.Disp.ANSI.Helpers
+import           Control.Lens                   ( makeLenses )
+import qualified Lib.Parse                     as P
 
 import qualified Data.Text                     as T
 
@@ -90,46 +96,6 @@ type ServiceName = Name 'AwsService Text
 type TaskDefName = Name 'AwsTaskDef Text
 type ContainerDefName = Name 'AwsEcsContainerDef Text
 
-{- | ECR repos are structured as:
-@@
-<_ecrrRegId>.dkr.ecr.<region>.amazonaws.com/<_ecrrRepo>:<_ecrrTag>
-            |--          _ecrrHost       --|
-@@
-
-RegId values are numeric.
--}
-data EcrRepo = EcrRepo
-  { _ecrrRegId :: Text
-  , _ecrrHost  :: Text
-  , _ecrrRepo  :: Text
-  , _ecrrTag   :: Text
-  }
-  deriving (Eq, Show)
-
-parseEcrRepo :: P.ParserText EcrRepo
-parseEcrRepo = do
-  _ecrrRegId <- P.takeWhile1P (Just "_ecrrRegId") C.isNumber
-  P.char '.'
-  _ecrrHost <- P.takeWhile1P (Just "_ecrrHost") (/= '/')
-  P.char '/'
-  _ecrrRepo <- P.takeWhile1P (Just "_ecrrRepo") (/= ':')
-  P.char ':'
-  _ecrrTag <- P.takeRest
-  pure EcrRepo { .. }
--- ecrRepo :: Text ->  EcrRepo
--- ecrRepo reg =
---   let (pre, _ecrrTag) = T.breakOnEnd ":" reg
---       -- the registry id is a number
---       _ecrrRegId      = T.takeWhile C.isNumber pre
---       _ecrrRepo       = T.takeWhileEnd (/= '/') pre
---       _ecrrHost       = T.dropk
---   in  undefined
-
--- pattern EcrRepo' :: Text -> Maybe EcrRepo
--- pattern EcrRepo' n 
-
-type EcrRepoName = Name 'AwsEcrRepo Text
-
 pattern ClusterName :: Text -> ClusterName
 pattern ClusterName n <- UnsafeName n where
   ClusterName n = UnsafeName n
@@ -145,13 +111,6 @@ pattern TaskDefName n <- UnsafeName n where
 pattern ContainerDefName :: Text -> ContainerDefName
 pattern ContainerDefName n <- UnsafeName n where
   ContainerDefName n = UnsafeName n
-
-pattern EcrRepoName :: Text -> EcrRepoName
-pattern EcrRepoName n <- UnsafeName n where
-  EcrRepoName n =
-    let (pre, _) = T.breakOnEnd ":" n
-        takeName = UnsafeName . T.takeWhileEnd (/= '/')
-    in  takeName $ if T.null pre then n else T.dropEnd 1 pre
 
 -- | Status of the service's TaskDefintion.
 data ServiceTaskDef = ServiceTaskDef
@@ -206,3 +165,49 @@ instance Disp 'Terminal (Name t Text) where
 instance {-# OVERLAPPING #-} Disp 'Terminal ContainerDefName where
   disp (UnsafeName (mappend "ContainerDef: " -> n)) =
     setSGR [SetColor Foreground Vivid Yellow] >> heading n
+
+{- | ECR repos are structured as:
+@@
+<_ecrrRegId>.dkr.ecr.<region>.amazonaws.com/<_ecrrRepo>:<_ecrrTag>
+            |--          _ecrrHost       --|
+@@
+
+-}
+data EcrImage = EcrImage
+  { _ecriRegId :: Text
+  , _ecriHost  :: Text
+  , _ecriRepo  :: Text
+  , _ecriTag   :: Maybe Text
+  }
+  deriving (Eq, Show, Ord)
+
+-- | Write an image name in the same form as AWS.
+writeEcrImage :: EcrImage -> Text
+writeEcrImage EcrImage {..} =
+  _ecriRegId <> "." <> _ecriHost <> "/" <> _ecriRepo <> tag
+  where tag = maybe "" (mappend ":") _ecriTag
+
+parseEcrImage :: P.ParserText EcrImage
+parseEcrImage = do
+  _ecriRegId <- P.takeUntil1P (Just "_ecrrRegId") '.'
+  P.char '.'
+  _ecriHost <- P.takeUntil1P (Just "_ecrrHost") '/'
+  P.char '/'
+  -- Take until the tag. 
+  _ecriRepo <- P.takeUntil1P (Just "_ecrrRepo") ':'
+  -- the tag is optional.
+  _ecriTag  <- tag <|> pure Nothing
+  pure EcrImage { .. }
+  where tag = fmap Just . P.try $ P.char ':' >> P.takeRest
+
+type EcrRepoName = Name 'AwsEcrRepo EcrImage
+
+ecrImage :: Text -> Either (P.ParseErrorBundle Text P.FParseErr) EcrImage
+ecrImage = P.parse' parseEcrImage
+
+pattern EcrRepoName :: EcrImage -> EcrRepoName
+pattern EcrRepoName n <- UnsafeName n where
+  EcrRepoName n = UnsafeName n
+
+makeLenses ''EcrImage
+

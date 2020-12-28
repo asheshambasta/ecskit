@@ -13,11 +13,11 @@ module Polysemy.AWS
   , collectAWSResponses
   ) where
 
+import qualified Network.AWS                   as AWS
 import           Polysemy
+import           Polysemy.Reader
 import "prelude-polysemy" Prelude.Control.Error
                                                as Err
-import           Polysemy.Reader
-import qualified Network.AWS                   as AWS
 
 -- | Lift an AWS operation into a Sem
 liftAWS
@@ -30,14 +30,19 @@ liftAWS aws = fromEitherM . catchErrors . runAWS =<< ask @AWS.Env
   catchErrors = fmap (first AWSError) . try
   runAWS env = AWS.runResourceT . AWS.runAWS env $ aws
 
-newtype AWSError = AWSError SomeException
-                 deriving Show
+data AWSError = AWSError SomeException
+              | EcrInvalidRepoName Text
+              deriving Show
 
 instance Err.IsKnownError AWSError where
-  errCode AWSError{} = "ERR.AWS.SOME_EXCEPTION"
+  errCode AWSError{}           = errCode' "AWS.SOME_EXCEPTION"
+  errCode EcrInvalidRepoName{} = errCode' "ECR.INVALID_REPO_NAME"
   userMessage = Just . show
   errorLogLevel _ = levelCritical
   httpStatus _ = internalServerError500
+
+errCode' :: ErrCode -> ErrCode
+errCode' = mappend "ERR.AWS."
 
 -- | Collect AWS responses for paged results.
 collectAWSResponses
