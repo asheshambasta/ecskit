@@ -16,18 +16,18 @@ import qualified Options.Applicative.Types     as A
 -- and another more verbose, for those who don't. 
 cmdParse :: A.Parser AnyCmd
 cmdParse =
-  A.subparser
+  A.hsubparser
     $  altCmds ["c", "cluster"]          clusterCmds
     <> altCmds ["s", "service"]          serviceCmds
     <> altCmds ["td", "task-definition"] taskDefCmds
  where
   taskDefCmds =
-    let parser = A.subparser $ A.command "ls" listTaskDefs
+    let parser = A.hsubparser $ A.command "ls" listTaskDefs
     in  A.info parser $ A.progDesc "Task definition commands."
   serviceCmds =
     let
       parser =
-        A.subparser
+        A.hsubparser
           $  A.command "ls" listServices
           <> A.command "d" describeServices
           <> altCmds ["u", "update-task-definition"] updateTaskDef
@@ -37,7 +37,7 @@ cmdParse =
     in  A.info parser $ A.progDesc "Service commands."
   clusterCmds =
     let parser =
-          A.subparser
+          A.hsubparser
             $  A.command "d" describeClusters
             <> A.command "describe" describeClusters
     in  A.info parser $ A.progDesc "Cluster commands."
